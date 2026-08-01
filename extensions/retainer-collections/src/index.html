@@ -164,6 +164,7 @@ pre.raw{background:#0b1220;color:#cbd5e1;padding:12px;border-radius:8px;overflow
             <a class="mini-link" id="acct-load">↻ Load</a>
             <a class="mini-link" id="acct-tick-ret">tick “Retainer”</a>
             <a class="mini-link" id="acct-clear">clear</a>
+            <a class="mini-link" id="acct-diag" style="color:#b45309">🔍 diagnose</a>
           </label>
           <input id="acct-search" type="text" placeholder="search accounts…" style="width:100%;margin-bottom:4px">
           <div id="pl-accounts" class="pl-accounts"><div class="pl-empty">Click “Load” to fetch your P&amp;L accounts, then tick the retainer account(s).</div></div>
@@ -575,12 +576,58 @@ if (typeof window.RetainerEngine === 'undefined') {
       PL_ACCOUNTS=accts.map(function(a){ return {key:a.key,name:a.name,checked:false}; });
       ACCT_BY_KEY={}; PL_ACCOUNTS.forEach(function(a){ if(a.key) ACCT_BY_KEY[a.key]=a.name; });
       setConn('ok','Connected');
-      if(!PL_ACCOUNTS.length){ box.innerHTML='<div class="pl-empty">No accounts returned by the API. Use “Paste / import detail”, or check the Data inspector.</div>'; return; }
+      if(!PL_ACCOUNTS.length){
+        box.innerHTML='<div class="pl-empty">No accounts returned by the API — running diagnostics…</div>';
+        runDiagnostics();   // auto-probe so we can see the real endpoint/field names
+        return;
+      }
       renderAccountList('');
       var n=tickByText('retainer');
       msg('Loaded '+PL_ACCOUNTS.length+' accounts from <code>'+esc(ACCT_SOURCE)+'</code>'+(n?(' · pre-ticked '+n+' “Retainer” account'+(n>1?'s':'')):'')+'. Set the dates and click “Load report”.','info');
     }catch(err){ setConn('err','Error'); box.innerHTML='<div class="pl-empty">Could not load accounts: '+esc(err.message)+'</div>'; }
   }
+
+  /* ---- diagnostics: probe endpoints and dump raw shapes so mapping can be fixed ---- */
+  async function probeEndpoints(){
+    var eps=['businesses','profit-and-loss-statement-account-batch','general-ledger-account-batch',
+             'chart-of-account-batch','account-batch','profit-and-loss-statement-batch',
+             'general-ledger-transactions-batch'];
+    var out=[];
+    for(var i=0;i<eps.length;i++){
+      var ep=eps[i], entry={endpoint:ep};
+      try{
+        var body=await bridge('/api4/'+ep+'?PageSize=3');
+        var items=itemsOf(body);
+        entry.ok=true;
+        entry.topKeys = (body&&typeof body==='object'&&!Array.isArray(body))?Object.keys(body):(Array.isArray(body)?['<array>']:[typeof body]);
+        entry.itemCount=items.length;
+        entry.firstItemKeys=(items.length&&items[0]&&typeof items[0]==='object')?Object.keys(items[0]):null;
+        entry.sample=items.length?items[0]:body;
+      }catch(e){ entry.ok=false; entry.error=String((e&&e.message)||e); }
+      out.push(entry);
+    }
+    return out;
+  }
+  async function runDiagnostics(){
+    if(window.self===window.top){ msg('Open inside Manager.io to run diagnostics.','warn'); return; }
+    setConn('busy','Probing endpoints…'); msg('Probing Manager API endpoints…','info');
+    try{
+      var rep=await probeEndpoints();
+      var html=rep.map(function(e){
+        return '<div style="margin:4px 0;padding:4px 0;border-bottom:1px solid #eee"><b>'+esc(e.endpoint)+'</b> — '
+          +(e.ok?('items=<b>'+e.itemCount+'</b> · top=['+esc((e.topKeys||[]).join(', '))+']'
+                 +(e.firstItemKeys?('<br><span style="color:#0e7490">itemKeys=['+esc(e.firstItemKeys.join(', '))+']</span>'):''))
+                :('<span style="color:#b91c1c">error: '+esc(e.error)+'</span>'))+'</div>';
+      }).join('');
+      $('dbg-map').innerHTML='<div style="font-size:12px">'+html+'</div>';
+      $('dbg-raw').textContent=JSON.stringify(rep,null,2);
+      var d=document.querySelector('details.dbg'); if(d) d.open=true;
+      $('report').style.display='block';
+      setConn('ok','Connected');
+      msg('Diagnostics ready. Scroll down to <b>Data inspector</b> and send me what it shows (a screenshot of the itemKeys lines is enough) so I can finish the mapping.','info');
+    }catch(err){ setConn('err','Error'); msg('Diagnostics failed: '+esc(err.message),'err'); }
+  }
+  $('acct-diag').addEventListener('click',runDiagnostics);
   function renderAccountList(filter){
     var box=$('pl-accounts'); var f=(filter||'').toLowerCase();
     var items=PL_ACCOUNTS.map(function(a,i){ return {a:a,i:i}; }).filter(function(o){ return !f || o.a.name.toLowerCase().indexOf(f)>-1; });
