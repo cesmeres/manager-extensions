@@ -6,7 +6,7 @@
     {
       "name": "retainer-collections",
       "title": "Retainer Collections (Cash Basis)",
-      "stable": "1.3.0-dev.1",
+      "stable": "1.3.0-dev.2",
       "beta": null,
       "path": "extensions/retainer-collections",
       "install": "https://cesmeres.github.io/manager-extensions/retainer-collections/stable/"

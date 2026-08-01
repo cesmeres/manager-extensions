@@ -606,7 +606,7 @@ if (typeof window.RetainerEngine === 'undefined') {
         entry.envelopeKeys=(items.length&&items[0]&&typeof items[0]==='object')?Object.keys(items[0]):null;
         var it0=items.length?unwrap(items[0]):null;
         entry.itemKeys=it0?Object.keys(it0):null;   // real fields, unwrapped
-        if(it0){ entry.arrays={}; Object.keys(it0).forEach(function(k){ if(Array.isArray(it0[k])){ entry.arrays[k]={len:it0[k].length, keys:(it0[k][0]&&typeof it0[k][0]==='object')?Object.keys(unwrap(it0[k][0])):typeof it0[k][0]}; } }); }
+        if(it0){ entry.arrays={}; Object.keys(it0).forEach(function(k){ if(Array.isArray(it0[k])){ entry.arrays[k]={len:it0[k].length, keys:(it0[k][0]&&typeof it0[k][0]==='object')?Object.keys(it0[k][0]):typeof it0[k][0]}; } }); }
         entry.sample=it0||resp;
       }catch(e){ entry.ok=false; entry.error=String((e&&e.message)||e); }
       out.push(entry);
@@ -651,12 +651,38 @@ if (typeof window.RetainerEngine === 'undefined') {
     return out;
   }
 
+  // Pull one real line from a receipt / invoice / credit-note so we can see the
+  // exact line fields (account, invoice ref, amount, tax) needed for the engine.
+  async function probeLineShapes(){
+    var out={}; var want=['receipt-batch','sales-invoice-batch','credit-note-batch'];
+    for(var w=0;w<want.length;w++){
+      try{
+        var items=itemsOf(await bridge('/api4/'+want[w]+'?PageSize=15'));
+        var found=null;
+        for(var i=0;i<items.length;i++){ var it=unwrap(items[i]); var L=it.lines||it.Lines; if(Array.isArray(L)&&L.length){ found={item:it,line:L[0]}; break; } }
+        if(!found && items.length) found={item:unwrap(items[0]),line:null};
+        out[want[w]]=found;
+      }catch(e){ out[want[w]]={error:String((e&&e.message)||e)}; }
+    }
+    return out;
+  }
+  function fieldDump(obj, keysWanted){
+    if(!obj) return '(none)';
+    var keys = keysWanted || Object.keys(obj);
+    return keys.map(function(k){ if(!(k in obj)) return null; var v=obj[k]; var t;
+      if(v===null) t='null'; else if(Array.isArray(v)) t='array['+v.length+']';
+      else if(typeof v==='object') t='{'+Object.keys(v).slice(0,10).join(', ')+'}';
+      else t=String(v);
+      if(t.length>56) t=t.slice(0,56)+'…'; return '  '+k+' = '+t;
+    }).filter(Boolean).join('\n');
+  }
+
   async function runDiagnostics(){
     if(window.self===window.top){ msg('Open inside Manager.io to run diagnostics.','warn'); return; }
     setConn('busy','Probing endpoints…'); msg('Probing Manager API endpoints…','info');
     try{
       var rep=await probeEndpoints();
-      var deep=await deepProbe();
+      var shapes=await probeLineShapes();
       var html=rep.map(function(e){
         return '<div style="margin:4px 0;padding:4px 0;border-bottom:1px solid #eee"><b>'+esc(e.endpoint)+'</b> — '
           +(e.ok?('items=<b>'+e.itemCount+'</b>'
@@ -664,24 +690,22 @@ if (typeof window.RetainerEngine === 'undefined') {
                  +(e.arrays&&Object.keys(e.arrays).length?('<br><span style="color:#047857">lines/arrays: '+esc(Object.keys(e.arrays).map(function(a){var A=e.arrays[a];return a+'['+A.len+'] → {'+(Array.isArray(A.keys)?A.keys.join(', '):A.keys)+'}';}).join('  ;  '))+'</span>'):''))
                 :('<span style="color:#b91c1c">error: '+esc(e.error)+'</span>'))+'</div>';
       }).join('');
-      // summarize the keyed-read attempts (the decisive part)
-      var dhtml='';
-      if(deep.readByKey){
-        dhtml='<div style="margin-top:10px;font-weight:700;color:#b45309">Keyed-read attempts (looking for rendered rows):</div>';
-        deep.readByKey.forEach(function(r){
-          dhtml+='<div style="margin:3px 0;font-size:11.5px"><code>'+esc(r.path)+'</code> → '
-            +(r.error?('<span style="color:#b91c1c">'+esc(r.error)+'</span>')
-                     :('keys=['+esc((r.summary.keys||[]).join(', '))+']'
-                       +(r.summary.arrays&&Object.keys(r.summary.arrays).length?(' · <b style="color:#047857">arrays: '+esc(Object.keys(r.summary.arrays).map(function(a){return a+'('+r.summary.arrays[a].len+')';}).join(', '))+'</b>'):'')))
-            +'</div>';
-        });
-      }
+      // readable line shapes (the decisive part for the engine)
+      var rc=shapes['receipt-batch']||{}, inv=shapes['sales-invoice-batch']||{}, cn=shapes['credit-note-batch']||{};
+      var invTax=['amountsIncludeTax','withholdingTax','withholdingTaxType','withholdingTaxPercentage','exchangeRate'];
+      var dhtml='<div style="margin-top:12px;font-weight:700;color:#b45309">RECORD LINE SHAPES (for the cash-basis engine)</div>'
+        +'<pre style="white-space:pre-wrap;font-size:11px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px;margin-top:6px">'
+        +'RECEIPT — line fields:\n'+esc(rc.error?('error: '+rc.error):fieldDump(rc.line))
+        +'\n\nSALES INVOICE — line fields:\n'+esc(inv.error?('error: '+inv.error):fieldDump(inv.line))
+        +'\n\nSALES INVOICE — tax/header fields:\n'+esc(inv.item?fieldDump(inv.item, invTax):'(none)')
+        +'\n\nCREDIT NOTE — line fields:\n'+esc(cn.error?('error: '+cn.error):fieldDump(cn.line))
+        +'</pre>';
       $('dbg-map').innerHTML='<div style="font-size:12px">'+html+dhtml+'</div>';
-      $('dbg-raw').textContent=JSON.stringify({endpoints:rep, deep:deep},null,2);
+      $('dbg-raw').textContent=JSON.stringify({endpoints:rep, lineShapes:shapes},null,2);
       var d=document.querySelector('details.dbg'); if(d) d.open=true;
       $('report').style.display='block';
       setConn('ok','Connected');
-      msg('Diagnostics ready. Send me the <b>receipt-batch</b> and <b>sales-invoice-batch</b> lines — the <b>item fields</b> and the green <b>lines/arrays</b> structure — so I can build the cash-basis computation.','info');
+      msg('Diagnostics ready. Send me the <b>“RECORD LINE SHAPES”</b> block (the grey box) — that has the receipt/invoice line fields I need to build the engine.','info');
     }catch(err){ setConn('err','Error'); msg('Diagnostics failed: '+esc(err.message),'err'); }
   }
   $('acct-diag').addEventListener('click',runDiagnostics);
