@@ -499,6 +499,9 @@ if (typeof window.RetainerEngine === 'undefined') {
     });
   }
   function itemsOf(d){ if(Array.isArray(d)) return d; if(d&&typeof d==='object'){ if(Array.isArray(d.items))return d.items; if(Array.isArray(d.data))return d.data; for(var k in d) if(Array.isArray(d[k])) return d[k]; } return []; }
+  // api4 wraps every record as { key, item, _links, _actions }; the real data is in `item`.
+  function unwrap(row){ return (row && typeof row==='object' && !Array.isArray(row) && ('item' in row)) ? (row.item||{}) : row; }
+  function rowKey(row){ return (row && typeof row==='object') ? String(row.key||row.Key||'') : ''; }
   function nextToken(d){ return d && (d.next_page_token||d.nextPageToken) || null; }
   async function fetchAll(endpoint){
     var out=[], token=null, guard=0;
@@ -539,9 +542,9 @@ if (typeof window.RetainerEngine === 'undefined') {
         if(list && list.length){
           var accts=[];
           for(var j=0;j<list.length;j++){
-            var a=list[j];
-            var key=String(pick(a,['key'])||pick(a,['id'])||'');
-            var name=asText(pick(a,['name']));
+            var a=list[j], it=unwrap(a);
+            var key=rowKey(a)||String(pick(it,['key'])||'');
+            var name=asText(pick(it,['name']));
             if(name) accts.push({key:key,name:name});
           }
           if(accts.length){ ACCT_SOURCE=eps[i]; return accts; }
@@ -554,11 +557,11 @@ if (typeof window.RetainerEngine === 'undefined') {
       var gl=await fetchAll('general-ledger-transactions-batch');
       var seen={}, out=[];
       for(var k=0;k<gl.length;k++){
-        var g=gl[k];
-        var dRaw=pick(g,['date','transactiondate','postingdate']); var d=dRaw?toDate(dRaw):null;
+        var g=gl[k], it=unwrap(g);
+        var dRaw=pick(it,['date','transactiondate','postingdate']); var d=dRaw?toDate(dRaw):null;
         if(d){ if(from&&d<from) continue; if(to&&d>to) continue; }
-        var raw=pick(g,['account']); var key='',name='';
-        if(raw && typeof raw==='object'){ key=String(raw.Key||raw.key||raw.id||''); name=asText(raw); }
+        var raw=pick(it,['account']); var key='',name='';
+        if(raw && typeof raw==='object'){ key=String(raw.key||raw.Key||raw.id||''); name=asText(raw); }
         else { name=String(raw==null?'':raw); key=name; }
         var id=key||name; if(!id||seen[id]) continue; seen[id]=1; out.push({key:key,name:name||key});
       }
@@ -596,13 +599,14 @@ if (typeof window.RetainerEngine === 'undefined') {
     for(var i=0;i<eps.length;i++){
       var ep=eps[i], entry={endpoint:ep};
       try{
-        var body=await bridge('/api4/'+ep+'?PageSize=3');
-        var items=itemsOf(body);
+        var resp=await bridge('/api4/'+ep+'?PageSize=3');
+        var items=itemsOf(resp);
         entry.ok=true;
-        entry.topKeys = (body&&typeof body==='object'&&!Array.isArray(body))?Object.keys(body):(Array.isArray(body)?['<array>']:[typeof body]);
+        entry.topKeys = (resp&&typeof resp==='object'&&!Array.isArray(resp))?Object.keys(resp):(Array.isArray(resp)?['<array>']:[typeof resp]);
         entry.itemCount=items.length;
-        entry.firstItemKeys=(items.length&&items[0]&&typeof items[0]==='object')?Object.keys(items[0]):null;
-        entry.sample=items.length?items[0]:body;
+        entry.envelopeKeys=(items.length&&items[0]&&typeof items[0]==='object')?Object.keys(items[0]):null;
+        entry.itemKeys=items.length?Object.keys(unwrap(items[0])):null;   // real fields, unwrapped
+        entry.sample=items.length?unwrap(items[0]):resp;
       }catch(e){ entry.ok=false; entry.error=String((e&&e.message)||e); }
       out.push(entry);
     }
@@ -615,8 +619,8 @@ if (typeof window.RetainerEngine === 'undefined') {
       var rep=await probeEndpoints();
       var html=rep.map(function(e){
         return '<div style="margin:4px 0;padding:4px 0;border-bottom:1px solid #eee"><b>'+esc(e.endpoint)+'</b> — '
-          +(e.ok?('items=<b>'+e.itemCount+'</b> · top=['+esc((e.topKeys||[]).join(', '))+']'
-                 +(e.firstItemKeys?('<br><span style="color:#0e7490">itemKeys=['+esc(e.firstItemKeys.join(', '))+']</span>'):''))
+          +(e.ok?('items=<b>'+e.itemCount+'</b>'
+                 +(e.itemKeys?('<br><span style="color:#0e7490">item fields=['+esc(e.itemKeys.join(', '))+']</span>'):''))
                 :('<span style="color:#b91c1c">error: '+esc(e.error)+'</span>'))+'</div>';
       }).join('');
       $('dbg-map').innerHTML='<div style="font-size:12px">'+html+'</div>';
@@ -657,9 +661,6 @@ if (typeof window.RetainerEngine === 'undefined') {
     }
     setConn('busy','Loading…'); msg('Contacting Manager.io…','info');
     try{
-      try{ var biz=itemsOf(await bridge('/api4/businesses?PageSize=50'));
-        if(biz.length){ var nm=pick(biz[0],['name']); if(nm) $('firm').textContent=String(nm).toUpperCase(); } }catch(e){}
-
       var from=toDate($('live-from').value), to=toDate($('live-to').value);
       var descFilter=$('live-desc').value.trim();
 
@@ -673,24 +674,24 @@ if (typeof window.RetainerEngine === 'undefined') {
 
       var rows=[], sample=[], accountValsSeen={};
       for(var i=0;i<gl.length;i++){
-        var g=gl[i];
-        var dRaw=pick(g,['date','transactiondate','postingdate']);
+        var g=gl[i], it=unwrap(g);
+        var dRaw=pick(it,['date','transactiondate','postingdate']);
         var d=dRaw?toDate(dRaw):null;
         if(d){ if(from&&d<from) continue; if(to&&d>to) continue; }
         // resolve the row's account to a key + display name
-        var raw=pick(g,['account']); var akey='', aname='';
-        if(raw && typeof raw==='object'){ akey=String(raw.Key||raw.key||raw.id||''); aname=asText(raw); if(!aname && ACCT_BY_KEY[akey]) aname=ACCT_BY_KEY[akey]; }
-        else { var s=String(raw==null?'':raw); if(ACCT_BY_KEY[s]){ akey=s; aname=ACCT_BY_KEY[s]; } else { aname=s; } }
-        if(sample.length<3) sample.push(g);
+        var raw=pick(it,['account']); var akey='', aname='';
+        if(raw && typeof raw==='object'){ akey=String(raw.key||raw.Key||raw.id||''); aname=asText(raw); if(!aname && ACCT_BY_KEY[akey]) aname=ACCT_BY_KEY[akey]; }
+        else { var s=String(raw==null?'':raw); if(ACCT_BY_KEY[s]){ akey=s; aname=ACCT_BY_KEY[s]; } else { aname=s; akey=s; } }
+        if(sample.length<3) sample.push(it);
         var av=akey||aname; if(av && !accountValsSeen[av]) accountValsSeen[av]=aname||akey;
         var match = (akey && selKeys[akey]) || (aname && selNames[aname.toLowerCase()]);
         if(!match) continue;
         rows.push({
           date:dRaw||'', account:aname||akey,
-          transaction:asText(pick(g,['transaction','reference','sourcedocument','document','invoice'])),
-          customer:asText(pick(g,['customer','contact','client'])),
-          description:asText(pick(g,['description','narration','item'])),
-          debit:pick(g,['debit']), credit:pick(g,['credit'])
+          transaction:asText(pick(it,['transaction','reference','sourcedocument','document','invoice'])),
+          customer:asText(pick(it,['customer','contact','client','payer','payee'])),
+          description:asText(pick(it,['description','narration','linedescription'])),
+          debit:pick(it,['debit']), credit:pick(it,['credit'])
         });
       }
       showDebugLive(gl, rows, sample, accountValsSeen);

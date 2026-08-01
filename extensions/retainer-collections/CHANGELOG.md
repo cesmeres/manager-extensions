@@ -2,6 +2,12 @@
 
 All notable changes to this extension. Versioning follows [SemVer](https://semver.org).
 
+## [1.2.2] — 2026-08-01
+### Fixed
+- Unwrap the api4 { key, item } envelope — real fields live in `item`. This is why accounts/GL came back empty. Accounts now load from `profit-and-loss-statement-account-batch`; GL fields read from `item`.
+- Diagnostics now show the unwrapped `item` field names.
+- Dropped the firm-name override (the businesses list returns all businesses, not the current one).
+
 ## [1.2.0] — 2026-08-01
 ### Added
 - **P&L account selector** in live mode — loads your Profit & Loss accounts from
