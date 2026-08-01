@@ -771,18 +771,15 @@ if (typeof window.RetainerEngine === 'undefined') {
   // (which DOES include lines) and keep only the invoices we need, stopping
   // early once all are found. Indexes by both envelope key and item key.
   async function fetchInvoicesFiltered(neededSet, onProgress){
-    var need=Object.keys(neededSet).length, byKey={}, token=null, guard=0, scanned=0, found=0;
-    do{
-      var path='/api4/sales-invoice-batch?PageSize=1000'+(token?('&next_page_token='+encodeURIComponent(token)):'');
-      var body=await bridge(path); var items=itemsOf(body); token=nextToken(body); guard++;
-      for(var i=0;i<items.length;i++){
-        scanned++;
-        var ek=rowKey(items[i]); var it=unwrap(items[i]); var ik=String(pick(it,['key'])||'');
-        if(neededSet[ek]||neededSet[ik]){ var norm=normInvoice(items[i]); if(!byKey[ek]){ byKey[ek]=norm; found++; } if(ik) byKey[ik]=norm; }
-      }
-      if(onProgress) onProgress(scanned, found, need);
-    } while(token && guard<400 && found<need);
-    return byKey;
+    var need=Object.keys(neededSet).length, byKey={}, found=0, sampleKeys=[];
+    // Full scan (same paging as receipts, which fetched 11,911 fine). No early-exit.
+    var all=await fetchAll('sales-invoice-batch', function(nn){ if(onProgress) onProgress(nn, found, need); });
+    for(var i=0;i<all.length;i++){
+      var ek=rowKey(all[i]); var it=unwrap(all[i]); var ik=String(pick(it,['key'])||'');
+      if(sampleKeys.length<6) sampleKeys.push({ek:ek, ik:ik, ref:pick(it,['reference'])});
+      if(neededSet[ek]||neededSet[ik]){ var norm=normInvoice(all[i]); if(!byKey[ek]){ byKey[ek]=norm; found++; } if(ik) byKey[ik]=norm; }
+    }
+    return { byKey:byKey, scanned:all.length, found:found, sampleKeys:sampleKeys };
   }
 
   async function loadLiveRecords(){
@@ -816,7 +813,8 @@ if (typeof window.RetainerEngine === 'undefined') {
       var keys=Object.keys(keySet);
       var neededSet={}; keys.forEach(function(k){ neededSet[k]=1; });
       msg('Scanning invoices for the '+keys.length+' paid in the period…','info');
-      var invoicesByKey=await fetchInvoicesFiltered(neededSet, function(scanned,found,need){ setConn('busy','Invoices: '+found+'/'+need+' (scanned '+scanned+')'); });
+      var invRes=await fetchInvoicesFiltered(neededSet, function(scanned,found,need){ setConn('busy','Invoices scanned: '+scanned); });
+      var invoicesByKey=invRes.byKey;
       // 3) customer names
       setConn('busy','Customers…');
       var custName={};
@@ -839,7 +837,7 @@ if (typeof window.RetainerEngine === 'undefined') {
       var unalloc=receipts.reduce(function(s,r){return s+(r.unallocated||0);},0);
       $('dbg-map').innerHTML='<div style="font-size:12px">'
         +'Receipts fetched: <b>'+receiptsRaw.length+'</b> · in period: <b>'+receipts.length+'</b><br>'
-        +'Invoices fetched: <b>'+keys.length+'</b> (with lines: '+invWithLines+') · payments matched to selected accounts: <b>'+res.stats.matchedPayments+'</b><br>'
+        +'Invoices needed: <b>'+keys.length+'</b> · scanned: <b>'+invRes.scanned+'</b> · resolved: <b>'+invRes.found+'</b> (with lines: '+invWithLines+') · payments matched: <b>'+res.stats.matchedPayments+'</b><br>'
         +'Selected account keys: <b>'+selKeysArr.length+'</b> · distinct account keys on invoice lines: <b>'+Object.keys(invAcctKeys).length+'</b> · <b style="color:'+(overlap.length?'#047857':'#b91c1c')+'">key overlap: '+overlap.length+'</b><br>'
         +'Unresolved invoice refs: <b>'+unresolved+'</b> · receipt lines with no specific invoice: <b>'+unalloc+'</b> · direct-to-income lines: <b>'+res.stats.directs+'</b> · elapsed '+secs+'s'
         +(!overlap.length?'<br><span style="color:#b91c1c">⚠ No overlap between your P&L account keys and the account keys on invoice lines — that’s why the total is 0. The raw box shows both sets so I can fix the mapping.</span>':'')
@@ -848,6 +846,9 @@ if (typeof window.RetainerEngine === 'undefined') {
       $('dbg-raw').textContent=JSON.stringify({
         selectedAccountKeys:selKeysArr,
         topInvoiceLineAccountKeys:Object.keys(invAcctKeys).slice(0,25),
+        invoicesScanned:invRes.scanned, invoicesResolved:invRes.found,
+        unresolvedInvoiceRefsSample:res.stats.unknownInvoices.slice(0,6),
+        batchInvoiceKeySample:invRes.sampleKeys,
         stats:res.stats,
         sampleRows:res.rows.slice(0,5),
         sampleReceipt:receiptsRaw.length?normReceipt(receiptsRaw[0]):null,
