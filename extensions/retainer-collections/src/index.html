@@ -129,6 +129,29 @@ details.dbg summary{cursor:pointer;color:var(--muted);font-weight:600}
 pre.raw{background:#0b1220;color:#cbd5e1;padding:12px;border-radius:8px;overflow:auto;font-size:11px;max-height:280px;margin-top:8px}
 .foot{margin-top:24px;text-align:center;font-size:11px;color:var(--dim)}
 
+/* view tabs + Pareto (80/20) */
+.view-tabs{display:flex;gap:6px;margin-bottom:14px}
+.vtab{padding:6px 14px;border:1px solid var(--line2);border-radius:20px;background:#fff;color:var(--ink2);font-weight:700;font-size:12px;cursor:pointer}
+.vtab.active{background:var(--ink);border-color:var(--ink);color:#fff}
+.pareto-callout{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px}
+.pareto-callout .big{font-size:16px;font-weight:800;color:var(--ink);line-height:1.35}
+.pareto-callout .big b{color:var(--brand)}
+.pareto-callout .verdict{margin-top:10px;font-size:13px;padding:8px 11px;border-radius:8px;font-weight:600}
+.pareto-callout .verdict.yes{background:var(--greenbg);color:var(--green);border:1px solid #a7f3d0}
+.pareto-callout .verdict.close{background:var(--amberbg);color:var(--amber);border:1px solid #fde68a}
+.pareto-callout ul{margin:10px 0 0 18px;font-size:12.5px;color:var(--ink2)}
+.pareto-callout li{margin:3px 0}
+table.pareto{width:100%;border-collapse:collapse;font-size:12.5px}
+table.pareto th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line2)}
+table.pareto th.num,table.pareto td.num{text-align:right;font-variant-numeric:tabular-nums}
+table.pareto td{padding:6px 10px;border-bottom:1px solid var(--line)}
+table.pareto tr.vital td{background:var(--brandbg)}
+table.pareto tr.cutoff td{border-bottom:2px dashed var(--amber)}
+.pbar-wrap{width:120px;background:var(--bg);border-radius:4px;overflow:hidden}
+.pbar{height:9px;border-radius:4px;background:var(--brand2)}
+.pbar.dim{background:var(--line2)}
+.rank{color:var(--muted);font-variant-numeric:tabular-nums}
+
 @media print{
   body{background:#fff;padding:0;font-size:11px}
   .toolbar,.drop,.acctpick,details.dbg,.foot,.noprint{display:none!important}
@@ -184,9 +207,9 @@ pre.raw{background:#0b1220;color:#cbd5e1;padding:12px;border-radius:8px;overflow
         <div class="fld"><label>Description contains (optional)</label><input id="imp-desc" type="text" value="" style="width:140px" placeholder="e.g. Retainer"></div>
         <button class="btn btn-primary" id="btn-build">Build report</button>
       </div>
-      <textarea id="paste" placeholder="Paste the cash-basis ledger here (copy the on-screen table from Manager, or a selection from Excel). Header row first: Date, Transaction, Customer, Description, Debit, Credit — plus an Account column if you want per-account subtotals."></textarea>
+      <textarea id="paste" placeholder="Paste a cash-basis report here (copy the on-screen table from Manager, or a selection from Excel). Two formats work:  (1) GL drill-down: Date, Transaction, Customer, Debit, Credit (+ optional Account).  (2) Receipt-level: Date Paid, Client, Receipt #, Invoice #, Income Account, Amount Collected."></textarea>
       <div class="drop" id="drop">…or drop / choose a <b>.csv</b> export of the same detail &nbsp;<input type="file" id="file" accept=".csv,text/csv" style="display:none"></div>
-      <div class="hint">Reproduces the exact reconciled report offline — no export to ChatGPT. Include an <b>Account</b> column to get per-account subtotals + grand total. Header names matched loosely; tab- or comma-separated both work.</div>
+      <div class="hint">Reproduces the exact reconciled report offline — no export to ChatGPT. Accepts either the <b>Debit/Credit</b> drill-down or a <b>“Amount Collected”</b> receipt report. Include an <b>Account</b> / <b>Income Account</b> column for per-account subtotals + grand total. Then switch to the <b>Client concentration (80/20)</b> tab for the Pareto analysis. Header names matched loosely; tab- or comma-separated both work.</div>
     </div>
   </div>
 
@@ -203,32 +226,50 @@ pre.raw{background:#0b1220;color:#cbd5e1;padding:12px;border-radius:8px;overflow
 
   <!-- ================= REPORT ================= -->
   <div id="report" style="display:none">
-    <div class="cards">
-      <div class="card g"><div class="lbl">Gross collections</div><div class="val" id="c-gross">—</div><div class="sub" id="c-gross-sub"></div></div>
-      <div class="card a"><div class="lbl">Adjustments / reversals</div><div class="val" id="c-adj">—</div><div class="sub" id="c-adj-sub"></div></div>
-      <div class="card n"><div class="lbl">Net cash-basis retainer income</div><div class="val" id="c-net">—</div><div class="sub">= what hits the P&amp;L</div></div>
-      <div class="card"><div class="lbl">Clients</div><div class="val" id="c-clients">—</div><div class="sub" id="c-clients-sub"></div></div>
+
+    <div class="view-tabs noprint">
+      <div class="vtab active" data-view="main">Collections report</div>
+      <div class="vtab" data-view="pareto">Client concentration (80/20)</div>
     </div>
 
-    <div class="recon">
-      <h3>Reconciliation to the ledger</h3>
-      <table>
-        <tr><td>Total credits in source</td><td id="r-credit">—</td></tr>
-        <tr><td>Less: total debits in source</td><td id="r-debit">—</td></tr>
-        <tr class="tot"><td>Net cash-basis amount</td><td id="r-net">—</td></tr>
-        <tr><td>Gross collections + adjustments</td><td id="r-check">—</td></tr>
-        <tr><td>Ties out?</td><td id="r-tie">—</td></tr>
-      </table>
+    <!-- ===== VIEW: collections ===== -->
+    <div id="view-main">
+      <div class="cards">
+        <div class="card g"><div class="lbl">Gross collections</div><div class="val" id="c-gross">—</div><div class="sub" id="c-gross-sub"></div></div>
+        <div class="card a"><div class="lbl">Adjustments / reversals</div><div class="val" id="c-adj">—</div><div class="sub" id="c-adj-sub"></div></div>
+        <div class="card n"><div class="lbl">Net cash-basis retainer income</div><div class="val" id="c-net">—</div><div class="sub">= what hits the P&amp;L</div></div>
+        <div class="card"><div class="lbl">Clients</div><div class="val" id="c-clients">—</div><div class="sub" id="c-clients-sub"></div></div>
+      </div>
+
+      <div class="recon">
+        <h3>Reconciliation to the ledger</h3>
+        <table>
+          <tr><td>Total credits in source</td><td id="r-credit">—</td></tr>
+          <tr><td>Less: total debits in source</td><td id="r-debit">—</td></tr>
+          <tr class="tot"><td>Net cash-basis amount</td><td id="r-net">—</td></tr>
+          <tr><td>Gross collections + adjustments</td><td id="r-check">—</td></tr>
+          <tr><td>Ties out?</td><td id="r-tie">—</td></tr>
+        </table>
+      </div>
+
+      <div class="section">
+        <h2>Paid Retainers <span class="badge" id="paid-badge"></span></h2>
+        <div id="paid-container"></div>
+      </div>
+
+      <div class="section" id="sec-adj">
+        <h2>Adjustments &amp; Reversals <span class="badge" id="adj-badge"></span></h2>
+        <div id="adj-container"></div>
+      </div>
     </div>
 
-    <div class="section">
-      <h2>Paid Retainers <span class="badge" id="paid-badge"></span></h2>
-      <div id="paid-container"></div>
-    </div>
-
-    <div class="section" id="sec-adj">
-      <h2>Adjustments &amp; Reversals <span class="badge" id="adj-badge"></span></h2>
-      <div id="adj-container"></div>
+    <!-- ===== VIEW: Pareto / 80-20 ===== -->
+    <div id="view-pareto" style="display:none">
+      <div id="pareto-summary"></div>
+      <div class="section">
+        <h2>Clients ranked by collections <span class="badge" id="pareto-badge"></span></h2>
+        <div id="pareto-container"></div>
+      </div>
     </div>
 
     <div class="noprint" style="display:flex;gap:8px;margin:8px 0 4px">
@@ -319,6 +360,16 @@ if (typeof window.RetainerEngine === 'undefined') {
   $('acct-all').addEventListener('click',function(){ $('acct-list').querySelectorAll('input').forEach(function(c){c.checked=true;}); renderSelected(); });
   $('acct-none').addEventListener('click',function(){ $('acct-list').querySelectorAll('input').forEach(function(c){c.checked=false;}); renderSelected(); });
 
+  /* report view switcher: Collections <-> 80/20 */
+  Array.prototype.forEach.call(document.querySelectorAll('.vtab'),function(t){
+    t.addEventListener('click',function(){
+      document.querySelectorAll('.vtab').forEach(function(x){x.classList.remove('active');});
+      t.classList.add('active');
+      $('view-main').style.display = t.dataset.view==='main'?'':'none';
+      $('view-pareto').style.display = t.dataset.view==='pareto'?'':'none';
+    });
+  });
+
   /* ======================= RENDER ======================= */
   function afterTransform(report, meta, autoTick){
     STATE.report=report; STATE.meta=meta;
@@ -356,6 +407,8 @@ if (typeof window.RetainerEngine === 'undefined') {
     $('adj-container').innerHTML=adj.html;
     $('adj-badge').textContent=adj.count+' item(s)';
 
+    renderPareto(accts, grand);
+
     $('gen-ts').textContent=new Date().toLocaleString();
     STATE.selected=accts; STATE.grand=grand;
     if(!accts.length) msg('No accounts selected — tick at least one account above.','warn');
@@ -364,6 +417,52 @@ if (typeof window.RetainerEngine === 'undefined') {
   }
 
   function countAdj(accts){ var n=0; accts.forEach(function(a){n+=a.adjustments.length;}); return n; }
+
+  /* ---- 80/20 (Pareto) client-concentration analysis ---- */
+  function renderPareto(accts, grand){
+    var map={};
+    accts.forEach(function(a){ a.clients.forEach(function(c){ map[c.customer]=E.round2((map[c.customer]||0)+c.amount); }); });
+    var arr=Object.keys(map).map(function(k){ return {customer:k, amount:map[k]}; });
+    arr.sort(function(a,b){ return b.amount-a.amount; });
+    var total=arr.reduce(function(s,x){ return E.round2(s+x.amount); },0);
+    var sumEl=$('pareto-summary'), cont=$('pareto-container'), badge=$('pareto-badge');
+    if(!arr.length || total<=0){ sumEl.innerHTML=''; badge.textContent=''; cont.innerHTML='<table class="pareto"><tbody><tr><td class="empty">No collections to analyse.</td></tr></tbody></table>'; return; }
+
+    var cum=0, cutoffIdx=-1;
+    arr.forEach(function(x,i){ cum=E.round2(cum+x.amount); x.cum=cum; x.pct=x.amount/total; x.cumPct=cum/total; if(cutoffIdx<0 && x.cumPct>=0.8) cutoffIdx=i; });
+    if(cutoffIdx<0) cutoffIdx=arr.length-1;
+    var vitalCount=cutoffIdx+1, vitalPctClients=vitalCount/arr.length, vitalRev=arr[cutoffIdx].cum;
+    var top20count=Math.max(1,Math.ceil(arr.length*0.2));
+    var top20rev=arr.slice(0,top20count).reduce(function(s,x){ return E.round2(s+x.amount); },0);
+    var top20pct=top20rev/total;
+    var pctS=function(f){ return (f*100).toFixed(1)+'%'; };
+
+    var verdictCls=(vitalPctClients<=0.25)?'yes':'close', verdictTxt;
+    if(vitalPctClients<=0.22) verdictTxt='Yes — textbook Pareto. Your revenue is concentrated in a small “vital few”, so focusing on them is well founded.';
+    else if(vitalPctClients<=0.35) verdictTxt='Broadly yes — close to 80/20. Revenue is concentrated, though the “vital few” runs a little larger than 20% of clients.';
+    else verdictTxt='Not quite 80/20 — your revenue is more evenly spread across clients. Focus still helps, but no small group dominates the way the rule assumes.';
+
+    sumEl.innerHTML='<div class="pareto-callout">'
+      +'<div class="big">Your top <b>'+vitalCount+'</b> clients (<b>'+pctS(vitalPctClients)+'</b> of '+arr.length+') bring in <b>80%</b> of collections — '+fmt(vitalRev)+' of '+fmt(total)+'.</div>'
+      +'<div class="verdict '+verdictCls+'">'+esc(verdictTxt)+'</div>'
+      +'<ul>'
+      +'<li>Your top <b>20%</b> of clients ('+top20count+') actually bring in <b>'+pctS(top20pct)+'</b> of collections ('+fmt(top20rev)+').</li>'
+      +'<li>Largest single client: <b>'+esc(arr[0].customer)+'</b> — '+fmt(arr[0].amount)+' ('+pctS(arr[0].pct)+' of the total).</li>'
+      +'<li>The remaining <b>'+(arr.length-vitalCount)+'</b> clients ('+pctS(1-vitalPctClients)+') together make up the last 20%.</li>'
+      +'</ul></div>';
+
+    var maxAmt=arr[0].amount;
+    var rowsHtml=arr.map(function(x,i){
+      var vital=i<=cutoffIdx, w=Math.max(2,Math.round(x.amount/maxAmt*120));
+      return '<tr class="'+(vital?'vital':'')+(i===cutoffIdx?' cutoff':'')+'">'
+        +'<td class="rank">'+(i+1)+'</td><td>'+esc(x.customer)+'</td>'
+        +'<td class="num amt">'+fmt(x.amount)+'</td><td class="num">'+pctS(x.pct)+'</td><td class="num">'+pctS(x.cumPct)+'</td>'
+        +'<td><div class="pbar-wrap"><div class="pbar'+(vital?'':' dim')+'" style="width:'+w+'px"></div></div></td></tr>';
+    }).join('');
+    cont.innerHTML='<table class="pareto"><thead><tr><th class="num">#</th><th>Client</th><th class="num">Collected</th><th class="num">% of total</th><th class="num">Cumulative %</th><th>Share</th></tr></thead><tbody>'+rowsHtml+'</tbody></table>';
+    badge.textContent=arr.length+' clients · shaded rows + dashed line = the “vital few” up to 80%';
+    STATE.pareto={arr:arr, total:total, vitalCount:vitalCount, vitalPctClients:vitalPctClients, top20count:top20count, top20pct:top20pct};
+  }
 
   function renderPaid(accts, grand, showAcct){
     if(!accts.length) return '<table class="grid"><tbody><tr><td class="empty">No accounts selected.</td></tr></tbody></table>';
@@ -426,31 +525,53 @@ if (typeof window.RetainerEngine === 'undefined') {
     var table = parseDelimited(text);
     if(table.length<2) throw new Error('Could not read a header row plus at least one data row.');
     var header = table[0];
+    var col = function(r,i){ return i>-1 ? r[i] : ''; };
     var map = {
-      date: findCol(header,['date']),
-      transaction: findCol(header,['transaction','reference','invoice','source']),
-      customer: findCol(header,['customer','contact','client','name']),
+      date: findCol(header,['date paid','date']),
+      transaction: findCol(header,['transaction','source document']),
+      invoice: findCol(header,['invoice']),
+      receipt: findCol(header,['receipt']),
+      customer: findCol(header,['client','customer','contact','name']),
       description: findCol(header,['description','item']),
-      account: findCol(header,['account']),
+      account: findCol(header,['income account','account']),
       debit: findCol(header,['debit']),
-      credit: findCol(header,['credit'])
+      credit: findCol(header,['credit']),
+      amount: findCol(header,['amount collected','amount received','collected','amount'])
     };
-    if(map.transaction<0 || map.debit<0 || map.credit<0)
-      throw new Error('Missing required columns. Need Transaction, Debit and Credit (found: '+header.join(', ')+').');
     var from=toDate($('imp-from').value), to=toDate($('imp-to').value);
-    var rows = table.slice(1).filter(function(r){return r.length>1;}).map(function(r){
-      return {
-        date: map.date>-1? r[map.date] : '',
-        transaction: r[map.transaction],
-        customer: map.customer>-1? r[map.customer] : '',
-        description: map.description>-1? r[map.description] : '',
-        account: map.account>-1? r[map.account] : '',
-        debit: r[map.debit], credit: r[map.credit]
-      };
-    });
+    var data = table.slice(1).filter(function(r){ return r.length>1; });
+    var rows, mode;
+
+    if(map.debit>-1 && map.credit>-1){
+      // ── Format A: GL account drill-down (Debit / Credit) ──
+      mode='drill-down (Credit − Debit)';
+      if(map.transaction<0) throw new Error('Drill-down format needs a Transaction column. Found: '+header.join(', '));
+      rows = data.map(function(r){ return {
+        date: col(r,map.date), transaction: col(r,map.transaction),
+        customer: col(r,map.customer), description: col(r,map.description),
+        account: col(r,map.account), debit: col(r,map.debit), credit: col(r,map.credit)
+      }; });
+    } else if(map.amount>-1){
+      // ── Format B: receipt-level income report ("Amount Collected") ──
+      mode='receipt-level (Amount Collected)';
+      rows = data.map(function(r){
+        var inv = col(r,map.invoice), dp = col(r,map.date);
+        var txn = map.transaction>-1 ? col(r,map.transaction) : ('Sales Invoice — ' + (inv||'?') + ' — ' + dp);
+        var amt = E.num(col(r,map.amount));
+        return {
+          date: dp, transaction: txn, customer: col(r,map.customer),
+          description: col(r,map.description), account: col(r,map.account),
+          credit: amt>=0 ? amt : '', debit: amt<0 ? -amt : ''
+        };
+      });
+    } else {
+      throw new Error('Unrecognised columns. Need either Debit + Credit, or an "Amount Collected" column. Found: '+header.join(', '));
+    }
+
     rows = filterByDate(rows, from, to);
     var desc = $('imp-desc').value.trim();
     var report = E.transform(rows, desc? {descriptionFilter:desc} : {});
+    map.__mode = mode;
     showDebugImport(map, rows.slice(0,3), header);
     var label = ($('imp-period').value.trim()) || rangeLabel(from,to) || 'Imported detail';
     afterTransform(report, { periodLabel: label }, '');
@@ -475,9 +596,10 @@ if (typeof window.RetainerEngine === 'undefined') {
   function readFile(f){ var r=new FileReader(); r.onload=function(){ try{ msg(''); buildFromText(r.result); }catch(err){ msg(esc(err.message),'err'); } }; r.readAsText(f); }
 
   function showDebugImport(map, sample, header){
-    var rows = Object.keys(map).map(function(k){ var i=map[k];
+    var mode=map.__mode||'';
+    var rows = Object.keys(map).filter(function(k){ return k!=='__mode'; }).map(function(k){ var i=map[k];
       return '<tr><td style="padding:2px 10px 2px 0;color:#64748b">'+k+'</td><td>'+(i>-1?('column '+(i+1)+' — <b>'+esc(header?header[i]:'')+'</b>'):'<i>not found</i>')+'</td></tr>'; }).join('');
-    $('dbg-map').innerHTML='<table style="font-size:12px;margin:6px 0 10px">'+rows+'</table>';
+    $('dbg-map').innerHTML=(mode?'<div style="font-size:12px;margin:6px 0"><b>Detected format:</b> '+esc(mode)+'</div>':'')+'<table style="font-size:12px;margin:6px 0 10px">'+rows+'</table>';
     $('dbg-raw').textContent=JSON.stringify(sample,null,2);
   }
 

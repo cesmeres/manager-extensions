@@ -43,4 +43,4 @@ rides on the URL: `…/stable/?account=Retainer&currency=PHP`.
 ## Extensions
 | Name | Title | Stable |
 |---|---|---|
-| [retainer-collections](extensions/retainer-collections) | Retainer Collections (Cash Basis) | 1.3.0 |
+| [retainer-collections](extensions/retainer-collections) | Retainer Collections (Cash Basis) | 1.4.0 |

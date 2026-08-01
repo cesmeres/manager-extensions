@@ -2,6 +2,11 @@
 
 All notable changes to this extension. Versioning follows [SemVer](https://semver.org).
 
+## [1.4.0] — 2026-08-01
+### Added
+- **Receipt-level import format** — the parser now also accepts Manager's cash-basis income report (Date Paid, Client, Receipt #, Invoice #, Income Account, Amount Collected), in addition to the GL Debit/Credit drill-down. Auto-detected; reconciles the same.
+- **Client concentration (80/20) tab** — a Pareto view ranking clients by collections with cumulative %, the "vital few" up to 80% highlighted, top-20%→revenue figure, and a plain-language verdict on whether the 80/20 rule holds.
+
 ## [1.3.0] — 2026-08-01
 ### Changed
 - **Import is now the primary, supported path** — it reconciles to the cash-basis
