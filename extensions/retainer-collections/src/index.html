@@ -246,6 +246,7 @@ pre.raw{background:#0b1220;color:#cbd5e1;padding:12px;border-radius:8px;overflow
 </div>
 
 <script src="engine.js"></script>
+<script src="cashbasis.js"></script>
 <script>
 if (typeof window.RetainerEngine === 'undefined') {
   document.getElementById('messages').innerHTML =
@@ -503,10 +504,11 @@ if (typeof window.RetainerEngine === 'undefined') {
   function unwrap(row){ return (row && typeof row==='object' && !Array.isArray(row) && ('item' in row)) ? (row.item||{}) : row; }
   function rowKey(row){ return (row && typeof row==='object') ? String(row.key||row.Key||'') : ''; }
   function nextToken(d){ return d && (d.next_page_token||d.nextPageToken) || null; }
-  async function fetchAll(endpoint){
+  async function fetchAll(endpoint, onPage){
     var out=[], token=null, guard=0;
     do{ var path='/api4/'+endpoint+'?PageSize=100000'+(token?('&next_page_token='+encodeURIComponent(token)):'');
       var body=await bridge(path); out=out.concat(itemsOf(body)); token=nextToken(body); guard++;
+      if(onPage) onPage(out.length);
     } while(token && guard<500);
     return out;
   }
@@ -731,6 +733,113 @@ if (typeof window.RetainerEngine === 'undefined') {
   $('acct-clear').addEventListener('click',function(){ PL_ACCOUNTS.forEach(function(a){a.checked=false;}); renderAccountList($('acct-search').value); });
   $('acct-search').addEventListener('input',function(){ renderAccountList($('acct-search').value); });
 
+  /* ================= RECORDS-BASED CASH BASIS (live) ================= */
+  var CB = window.RetainerCashBasis;
+  function keyOf(v){ if(v==null) return ''; if(typeof v==='object') return String(v.key||v.Key||v.id||''); return String(v); }
+  function n(v){ return E.num(v); }
+
+  function normReceipt(r){
+    var it=unwrap(r);
+    var date=pick(it,['date']);
+    var custHeader=keyOf(pick(it,['customer']));
+    var lines=it.lines||it.Lines||[];
+    var allocations=[], directs=[], unallocated=0;
+    for(var i=0;i<lines.length;i++){
+      var l=lines[i]; var amt=n(l.amount);
+      var invK=keyOf(l.accountsReceivableSalesInvoice);
+      var custK=keyOf(l.accountsReceivableCustomer)||custHeader;
+      if(invK){ allocations.push({invoice:invK, amount:amt, customerKey:custK}); }
+      else if(keyOf(l.accountsReceivableCustomer)){ unallocated++; }   // paid to customer, no invoice
+      else { var ak=keyOf(l.account); if(ak) directs.push({account:ak, customerKey:custK, amount:amt}); }
+    }
+    return {key:rowKey(r), date:date, customerKey:custHeader, allocations:allocations, directs:directs, unallocated:unallocated};
+  }
+  function normInvoice(rec){
+    var it=unwrap(rec);
+    var lines=(it.lines||it.Lines||[]).map(function(l){
+      var qty=(l.qty==null||l.qty==='')?1:n(l.qty);
+      var gross=qty*n(l.salesUnitPrice);
+      var dp=n(l.discountPercentage), da=n(l.discountAmount);
+      if(dp) gross=gross*(1-dp/100);
+      if(da) gross=gross-da;
+      return {account:keyOf(l.account), amount:E.round2(gross), tax:0};
+    });
+    return {customerKey:keyOf(it.customer), reference:pick(it,['reference'])||'', date:pick(it,['issuedate','date'])||'', lines:lines};
+  }
+  async function fetchInvoicesByKeys(keys, onProgress){
+    var byKey={}, idx=0, POOL=8, done=0;
+    async function worker(){
+      while(idx<keys.length){
+        var k=keys[idx++];
+        try{ byKey[k]=await bridge('/api4/sales-invoice?Key='+encodeURIComponent(k)); }catch(e){ byKey[k]=null; }
+        done++; if(onProgress && done%15===0) onProgress(done, keys.length);
+      }
+    }
+    var ws=[]; for(var w=0; w<Math.min(POOL,keys.length); w++) ws.push(worker());
+    await Promise.all(ws);
+    return byKey;
+  }
+
+  async function loadLiveRecords(){
+    if(window.self===window.top){
+      msg('Live mode only works inside Manager.io. In a browser use “Paste / import detail”.','warn'); setConn('err','Not in Manager'); return;
+    }
+    var sel=selectedPL();
+    if(!sel.length){ msg('Pick at least one P&L account first (click “↻ Load”, then tick your retainer account).','warn'); return; }
+    var from=toDate($('live-from').value), to=toDate($('live-to').value);
+    if(!from||!to){ msg('Set a valid From and To date.','warn'); return; }
+    var selSet={}; sel.forEach(function(a){ selSet[a.key]=1; });
+    var selHas={ has:function(k){ return !!selSet[k]; } };
+    var acctName={}; PL_ACCOUNTS.forEach(function(a){ if(a.key) acctName[a.key]=a.name; });
+
+    setConn('busy','Loading…');
+    var t0=Date.now();
+    try{
+      // 1) receipts in range
+      msg('Fetching receipts…','info');
+      var receiptsRaw=await fetchAll('receipt-batch', function(nn){ setConn('busy','Receipts: '+nn+'…'); });
+      var receipts=[];
+      for(var i=0;i<receiptsRaw.length;i++){
+        var nr=normReceipt(receiptsRaw[i]);
+        var d=nr.date?toDate(nr.date):null;
+        if(d){ if(d<from||d>to) continue; }
+        receipts.push(nr);
+      }
+      // 2) referenced invoices
+      var keySet={}; receipts.forEach(function(r){ r.allocations.forEach(function(a){ if(a.invoice) keySet[a.invoice]=1; }); });
+      var keys=Object.keys(keySet);
+      msg('Fetching '+keys.length+' invoices paid in the period…','info');
+      var invRaw=await fetchInvoicesByKeys(keys, function(dn,tot){ setConn('busy','Invoices: '+dn+'/'+tot); });
+      var invoicesByKey={};
+      keys.forEach(function(k){ var b=invRaw[k]; if(b==null) return; var arr=itemsOf(b); var rec=arr.length?arr[0]:b; invoicesByKey[k]=normInvoice(rec); });
+      // 3) customer names
+      setConn('busy','Customers…');
+      var custName={};
+      try{ var custRaw=await fetchAll('customer-batch');
+        custRaw.forEach(function(c){ var it=unwrap(c); var nm=pick(it,['namewithcode'])||pick(it,['name']); if(nm) custName[rowKey(c)]=asText(nm); });
+      }catch(e){}
+      // 4) compute
+      var res=CB.compute(receipts, invoicesByKey, {accounts:selHas});
+      var ledger=CB.toLedgerRows(res.rows, {account:acctName, customer:custName});
+      var report=E.transform(ledger);
+
+      var secs=((Date.now()-t0)/1000).toFixed(1);
+      var unresolved=res.stats.unknownInvoices.length;
+      var unalloc=receipts.reduce(function(s,r){return s+(r.unallocated||0);},0);
+      $('dbg-map').innerHTML='<div style="font-size:12px">'
+        +'Receipts fetched: <b>'+receiptsRaw.length+'</b> · in period: <b>'+receipts.length+'</b><br>'
+        +'Invoice payments matched: <b>'+res.stats.matchedPayments+'</b> · invoices fetched: <b>'+keys.length+'</b><br>'
+        +'Unresolved invoice refs: <b>'+unresolved+'</b> · receipt lines paid to a customer without a specific invoice: <b>'+unalloc+'</b><br>'
+        +'Direct-to-income receipt lines: <b>'+res.stats.directs+'</b> · elapsed '+secs+'s'
+        +(unalloc?'<br><span style="color:#b45309">Note: '+unalloc+' receipt line(s) were auto-allocated to a customer (no invoice ref) — those can’t be attributed to an account and are excluded. If your total is short, this is likely why.</span>':'')
+        +'</div>';
+      $('dbg-raw').textContent=JSON.stringify({stats:res.stats, sampleRows:res.rows.slice(0,5), sampleReceipt:receiptsRaw.length?normReceipt(receiptsRaw[0]):null},null,2);
+
+      setConn('ok','Connected');
+      afterTransform(report, { periodLabel: rangeLabel(from,to) }, '');
+    }catch(err){ setConn('err','Error'); msg('Live compute failed: '+esc(err.message)+' — you can always use “Paste / import detail”.','err'); }
+  }
+
   async function loadLive(){
     if(window.self===window.top){
       msg('Live mode only works when this page is opened inside Manager.io (Settings → Extensions). Use the “Paste / import detail” tab here in the browser.','warn');
@@ -793,7 +902,7 @@ if (typeof window.RetainerEngine === 'undefined') {
       +'</div>';
     $('dbg-raw').textContent=JSON.stringify(sample,null,2);
   }
-  $('btn-load').addEventListener('click',loadLive);
+  $('btn-load').addEventListener('click',loadLiveRecords);
 
   (function probe(){
     if(window.self===window.top){ setConn('err','Standalone (import only)'); return; }
