@@ -74,6 +74,13 @@ textarea#paste:focus{border-color:var(--brand2)}
 .acct-chip input{margin:0;cursor:pointer}
 .acct-chip .chip-name{font-weight:600}
 .acct-chip .chip-amt{font-family:var(--mono);color:var(--muted);font-size:11px}
+/* P&L account selector (live mode) */
+.pl-accounts{max-height:160px;overflow:auto;border:1px solid var(--line2);border-radius:6px;padding:6px;background:#fff;min-width:260px}
+.pl-accounts .pl-item{display:flex;align-items:center;gap:7px;padding:3px 5px;font-size:12px;cursor:pointer;border-radius:4px}
+.pl-accounts .pl-item:hover{background:var(--brandbg)}
+.pl-accounts .pl-item input{margin:0;cursor:pointer}
+.pl-accounts .pl-empty{color:var(--muted);font-size:11.5px;padding:6px}
+.mini-link{font-size:11px;font-weight:600;cursor:pointer;margin-left:8px}
 
 /* ---- status / errors ---- */
 .msg{border-radius:8px;padding:10px 13px;font-size:12.5px;margin-bottom:14px}
@@ -152,11 +159,19 @@ pre.raw{background:#0b1220;color:#cbd5e1;padding:12px;border-radius:8px;overflow
       <div class="row">
         <div class="fld"><label>From date</label><input id="live-from" type="date"></div>
         <div class="fld"><label>To date</label><input id="live-to" type="date"></div>
-        <div class="fld"><label>Accounts to include (name contains)</label><input id="live-account" type="text" value="Retainer" style="width:180px"></div>
-        <div class="fld"><label>Description contains (optional)</label><input id="live-desc" type="text" value="" style="width:150px" placeholder="e.g. Retainer"></div>
+        <div class="fld" style="flex:1 1 300px;min-width:280px">
+          <label>Profit &amp; Loss accounts
+            <a class="mini-link" id="acct-load">↻ Load</a>
+            <a class="mini-link" id="acct-tick-ret">tick “Retainer”</a>
+            <a class="mini-link" id="acct-clear">clear</a>
+          </label>
+          <input id="acct-search" type="text" placeholder="search accounts…" style="width:100%;margin-bottom:4px">
+          <div id="pl-accounts" class="pl-accounts"><div class="pl-empty">Click “Load” to fetch your P&amp;L accounts, then tick the retainer account(s).</div></div>
+        </div>
+        <div class="fld"><label>Description contains (optional)</label><input id="live-desc" type="text" value="" style="width:130px" placeholder="e.g. Retainer"></div>
         <button class="btn btn-primary" id="btn-load">Load report</button>
       </div>
-      <div class="hint">Pulls the cash-basis General&nbsp;Ledger for the date range, keeps accounts whose name contains the text above, then nets each invoice (Credit&nbsp;&minus;&nbsp;Debit) per account. Multiple accounts get their own subtotal plus a grand total. On first run, confirm the total matches your P&amp;L (Data inspector shows the detected fields).</div>
+      <div class="hint">Loads your <b>Profit &amp; Loss accounts</b> so you can tick the retainer account(s) — no need to type the name. It then pulls the cash-basis General&nbsp;Ledger for the date range, keeps the selected accounts, and nets each invoice (Credit&nbsp;&minus;&nbsp;Debit) per account. Multiple accounts get their own subtotal plus a grand total.</div>
     </div>
 
     <!-- IMPORT -->
@@ -510,6 +525,84 @@ if (typeof window.RetainerEngine === 'undefined') {
     return String(v);
   }
 
+  /* ---- P&L account selector ---- */
+  var PL_ACCOUNTS=[];      // [{key,name,checked}]
+  var ACCT_BY_KEY={};      // key -> name
+  var ACCT_SOURCE='';
+
+  async function fetchAccounts(){
+    var eps=['profit-and-loss-statement-account-batch','general-ledger-account-batch','chart-of-account-batch','account-batch'];
+    for(var i=0;i<eps.length;i++){
+      try{
+        var list=await fetchAll(eps[i]);
+        if(list && list.length){
+          var accts=[];
+          for(var j=0;j<list.length;j++){
+            var a=list[j];
+            var key=String(pick(a,['key'])||pick(a,['id'])||'');
+            var name=asText(pick(a,['name']));
+            if(name) accts.push({key:key,name:name});
+          }
+          if(accts.length){ ACCT_SOURCE=eps[i]; return accts; }
+        }
+      }catch(e){}
+    }
+    // fallback: derive distinct accounts from the GL itself (date-range scoped)
+    try{
+      var from=toDate($('live-from').value), to=toDate($('live-to').value);
+      var gl=await fetchAll('general-ledger-transactions-batch');
+      var seen={}, out=[];
+      for(var k=0;k<gl.length;k++){
+        var g=gl[k];
+        var dRaw=pick(g,['date','transactiondate','postingdate']); var d=dRaw?toDate(dRaw):null;
+        if(d){ if(from&&d<from) continue; if(to&&d>to) continue; }
+        var raw=pick(g,['account']); var key='',name='';
+        if(raw && typeof raw==='object'){ key=String(raw.Key||raw.key||raw.id||''); name=asText(raw); }
+        else { name=String(raw==null?'':raw); key=name; }
+        var id=key||name; if(!id||seen[id]) continue; seen[id]=1; out.push({key:key,name:name||key});
+      }
+      if(out.length){ ACCT_SOURCE='(derived from general-ledger-transactions-batch)'; return out; }
+    }catch(e){}
+    return [];
+  }
+
+  async function loadAccounts(){
+    if(window.self===window.top){ msg('Open this inside Manager.io to load accounts. In a plain browser, use “Paste / import detail”.','warn'); return; }
+    var box=$('pl-accounts'); box.innerHTML='<div class="pl-empty">Loading accounts…</div>'; setConn('busy','Loading accounts…');
+    try{
+      var accts=await fetchAccounts();
+      accts.sort(function(a,b){ return a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
+      PL_ACCOUNTS=accts.map(function(a){ return {key:a.key,name:a.name,checked:false}; });
+      ACCT_BY_KEY={}; PL_ACCOUNTS.forEach(function(a){ if(a.key) ACCT_BY_KEY[a.key]=a.name; });
+      setConn('ok','Connected');
+      if(!PL_ACCOUNTS.length){ box.innerHTML='<div class="pl-empty">No accounts returned by the API. Use “Paste / import detail”, or check the Data inspector.</div>'; return; }
+      renderAccountList('');
+      var n=tickByText('retainer');
+      msg('Loaded '+PL_ACCOUNTS.length+' accounts from <code>'+esc(ACCT_SOURCE)+'</code>'+(n?(' · pre-ticked '+n+' “Retainer” account'+(n>1?'s':'')):'')+'. Set the dates and click “Load report”.','info');
+    }catch(err){ setConn('err','Error'); box.innerHTML='<div class="pl-empty">Could not load accounts: '+esc(err.message)+'</div>'; }
+  }
+  function renderAccountList(filter){
+    var box=$('pl-accounts'); var f=(filter||'').toLowerCase();
+    var items=PL_ACCOUNTS.map(function(a,i){ return {a:a,i:i}; }).filter(function(o){ return !f || o.a.name.toLowerCase().indexOf(f)>-1; });
+    if(!items.length){ box.innerHTML='<div class="pl-empty">No accounts match “'+esc(filter)+'”.</div>'; return; }
+    box.innerHTML=items.map(function(o){
+      return '<label class="pl-item"><input type="checkbox" data-i="'+o.i+'"'+(o.a.checked?' checked':'')+'>'+esc(o.a.name)+'</label>';
+    }).join('');
+    box.querySelectorAll('input').forEach(function(cb){ cb.addEventListener('change',function(){ PL_ACCOUNTS[+cb.dataset.i].checked=cb.checked; }); });
+  }
+  function tickByText(t){
+    t=(t||'').toLowerCase().trim(); var n=0;
+    if(t) PL_ACCOUNTS.forEach(function(a){ if(a.name.toLowerCase().indexOf(t)>-1){ a.checked=true; n++; } });
+    renderAccountList($('acct-search').value);
+    return n;
+  }
+  function selectedPL(){ return PL_ACCOUNTS.filter(function(a){ return a.checked; }); }
+
+  $('acct-load').addEventListener('click',loadAccounts);
+  $('acct-tick-ret').addEventListener('click',function(){ if(!PL_ACCOUNTS.length){ loadAccounts(); return; } var n=tickByText('retainer'); if(!n) msg('No account name contains “Retainer”. Tick the account(s) manually.','warn'); });
+  $('acct-clear').addEventListener('click',function(){ PL_ACCOUNTS.forEach(function(a){a.checked=false;}); renderAccountList($('acct-search').value); });
+  $('acct-search').addEventListener('input',function(){ renderAccountList($('acct-search').value); });
+
   async function loadLive(){
     if(window.self===window.top){
       msg('Live mode only works when this page is opened inside Manager.io (Settings → Extensions). Use the “Paste / import detail” tab here in the browser.','warn');
@@ -521,44 +614,58 @@ if (typeof window.RetainerEngine === 'undefined') {
         if(biz.length){ var nm=pick(biz[0],['name']); if(nm) $('firm').textContent=String(nm).toUpperCase(); } }catch(e){}
 
       var from=toDate($('live-from').value), to=toDate($('live-to').value);
-      var acctFilter=$('live-account').value.trim().toLowerCase();
       var descFilter=$('live-desc').value.trim();
 
-      var gl=await fetchAll('general-ledger-transactions-batch');
-      if(!gl.length) throw new Error('The General Ledger returned no rows. Confirm the endpoint name with the Developer Toolkit.');
+      var sel=selectedPL();
+      if(!sel.length) throw new Error('Pick at least one P&L account: click “↻ Load” next to “Profit & Loss accounts”, then tick your retainer account(s).');
+      var selKeys={}, selNames={};
+      sel.forEach(function(a){ if(a.key) selKeys[a.key]=1; selNames[a.name.toLowerCase()]=1; });
 
-      var rows=[], sample=[];
+      var gl=await fetchAll('general-ledger-transactions-batch');
+      if(!gl.length) throw new Error('The General Ledger returned no rows for this business.');
+
+      var rows=[], sample=[], accountValsSeen={};
       for(var i=0;i<gl.length;i++){
         var g=gl[i];
         var dRaw=pick(g,['date','transactiondate','postingdate']);
         var d=dRaw?toDate(dRaw):null;
         if(d){ if(from&&d<from) continue; if(to&&d>to) continue; }
-        var acct=asText(pick(g,['account']));
-        if(acctFilter && acct.toLowerCase().indexOf(acctFilter)===-1) continue;
+        // resolve the row's account to a key + display name
+        var raw=pick(g,['account']); var akey='', aname='';
+        if(raw && typeof raw==='object'){ akey=String(raw.Key||raw.key||raw.id||''); aname=asText(raw); if(!aname && ACCT_BY_KEY[akey]) aname=ACCT_BY_KEY[akey]; }
+        else { var s=String(raw==null?'':raw); if(ACCT_BY_KEY[s]){ akey=s; aname=ACCT_BY_KEY[s]; } else { aname=s; } }
+        if(sample.length<3) sample.push(g);
+        var av=akey||aname; if(av && !accountValsSeen[av]) accountValsSeen[av]=aname||akey;
+        var match = (akey && selKeys[akey]) || (aname && selNames[aname.toLowerCase()]);
+        if(!match) continue;
         rows.push({
-          date:dRaw||'',
-          account:acct,
+          date:dRaw||'', account:aname||akey,
           transaction:asText(pick(g,['transaction','reference','sourcedocument','document','invoice'])),
           customer:asText(pick(g,['customer','contact','client'])),
           description:asText(pick(g,['description','narration','item'])),
           debit:pick(g,['debit']), credit:pick(g,['credit'])
         });
-        if(sample.length<3) sample.push(g);
       }
-      showDebugLive(gl, rows, sample);
-      if(!rows.length) throw new Error('No GL rows matched account containing "'+acctFilter+'" in '+rangeLabel(from,to)+'. Adjust the account text or date range, or check the mapping in the Data inspector.');
+      showDebugLive(gl, rows, sample, accountValsSeen);
+      if(!rows.length) throw new Error('No GL rows matched the selected account(s) in '+rangeLabel(from,to)+'. Check the date range, or the account mapping in the Data inspector below.');
 
       var report=E.transform(rows, descFilter?{descriptionFilter:descFilter}:{});
       setConn('ok','Connected');
-      afterTransform(report, { periodLabel: rangeLabel(from,to) }, acctFilter);
+      afterTransform(report, { periodLabel: rangeLabel(from,to) }, '');
     }catch(err){
       setConn('err','Error');
       msg(esc(err.message)+' <br><span style="color:#64748b">If live mode can’t reach the cash-basis ledger on your build, use “Paste / import detail” — same report, fully reconciled.</span>','err');
     }
   }
-  function showDebugLive(gl, rows, sample){
+  function showDebugLive(gl, rows, sample, accountVals){
     var keys=gl.length?Object.keys(gl[0]):[];
-    $('dbg-map').innerHTML='<div style="font-size:12px;margin:6px 0">Fetched <b>'+gl.length+'</b> GL rows · matched <b>'+rows.length+'</b> after date + account filter.<br>Detected keys on a GL record: <code style="font-size:11px">'+esc(keys.join(', '))+'</code></div>';
+    var accts = accountVals? Object.keys(accountVals).map(function(k){ return accountVals[k]||k; }) : [];
+    $('dbg-map').innerHTML='<div style="font-size:12px;margin:6px 0">'
+      +'Accounts list source: <code>'+esc(ACCT_SOURCE||'(not loaded)')+'</code> · '+PL_ACCOUNTS.length+' P&amp;L accounts loaded.<br>'
+      +'Fetched <b>'+gl.length+'</b> GL rows · matched <b>'+rows.length+'</b> after date + account selection.<br>'
+      +'Detected keys on a GL record: <code style="font-size:11px">'+esc(keys.join(', '))+'</code><br>'
+      +'Distinct account values seen in GL ('+accts.length+'): <code style="font-size:11px">'+esc(accts.slice(0,40).join('  |  '))+'</code>'
+      +'</div>';
     $('dbg-raw').textContent=JSON.stringify(sample,null,2);
   }
   $('btn-load').addEventListener('click',loadLive);
@@ -566,7 +673,7 @@ if (typeof window.RetainerEngine === 'undefined') {
   (function probe(){
     if(window.self===window.top){ setConn('err','Standalone (import only)'); return; }
     setConn('busy','Checking…');
-    bridge('/api4/businesses?PageSize=1').then(function(){ setConn('ok','Connected'); }).catch(function(){ setConn('err','No response'); });
+    bridge('/api4/businesses?PageSize=1').then(function(){ setConn('ok','Connected'); loadAccounts(); }).catch(function(){ setConn('err','No response'); });
   })();
 
   /* ======================= EXPORT ======================= */

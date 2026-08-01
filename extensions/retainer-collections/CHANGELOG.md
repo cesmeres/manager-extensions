@@ -2,6 +2,21 @@
 
 All notable changes to this extension. Versioning follows [SemVer](https://semver.org).
 
+## [1.2.0] — 2026-08-01
+### Added
+- **P&L account selector** in live mode — loads your Profit & Loss accounts from
+  the API (`profit-and-loss-statement-account-batch`, with fallbacks) so you tick
+  the retainer account(s) instead of typing a name. Search box, "tick Retainer",
+  and clear. Accounts auto-load on connect.
+### Changed
+- Live GL rows are now matched to the selected accounts by **account key/name**
+  (resolving key→name), fixing "no rows matched" when the ledger returns the
+  account as a reference rather than its display text.
+- Data inspector now reports the accounts-list source, counts, and the distinct
+  account values seen in the ledger.
+### Removed
+- The free-text "Accounts to include (name contains)" box (replaced by the selector).
+
 ## [1.1.0] — 2026-08-01
 ### Added
 - **Multiple accounts** with an account picker — tick 2+ income accounts to get a
