@@ -592,9 +592,8 @@ if (typeof window.RetainerEngine === 'undefined') {
 
   /* ---- diagnostics: probe endpoints and dump raw shapes so mapping can be fixed ---- */
   async function probeEndpoints(){
-    var eps=['businesses','profit-and-loss-statement-account-batch','general-ledger-account-batch',
-             'chart-of-account-batch','account-batch','profit-and-loss-statement-batch',
-             'general-ledger-transactions-batch'];
+    var eps=['profit-and-loss-statement-account-batch','receipt-batch','sales-invoice-batch',
+             'credit-note-batch','customer-batch','tax-code-batch'];
     var out=[];
     for(var i=0;i<eps.length;i++){
       var ep=eps[i], entry={endpoint:ep};
@@ -605,8 +604,10 @@ if (typeof window.RetainerEngine === 'undefined') {
         entry.topKeys = (resp&&typeof resp==='object'&&!Array.isArray(resp))?Object.keys(resp):(Array.isArray(resp)?['<array>']:[typeof resp]);
         entry.itemCount=items.length;
         entry.envelopeKeys=(items.length&&items[0]&&typeof items[0]==='object')?Object.keys(items[0]):null;
-        entry.itemKeys=items.length?Object.keys(unwrap(items[0])):null;   // real fields, unwrapped
-        entry.sample=items.length?unwrap(items[0]):resp;
+        var it0=items.length?unwrap(items[0]):null;
+        entry.itemKeys=it0?Object.keys(it0):null;   // real fields, unwrapped
+        if(it0){ entry.arrays={}; Object.keys(it0).forEach(function(k){ if(Array.isArray(it0[k])){ entry.arrays[k]={len:it0[k].length, keys:(it0[k][0]&&typeof it0[k][0]==='object')?Object.keys(unwrap(it0[k][0])):typeof it0[k][0]}; } }); }
+        entry.sample=it0||resp;
       }catch(e){ entry.ok=false; entry.error=String((e&&e.message)||e); }
       out.push(entry);
     }
@@ -659,7 +660,8 @@ if (typeof window.RetainerEngine === 'undefined') {
       var html=rep.map(function(e){
         return '<div style="margin:4px 0;padding:4px 0;border-bottom:1px solid #eee"><b>'+esc(e.endpoint)+'</b> — '
           +(e.ok?('items=<b>'+e.itemCount+'</b>'
-                 +(e.itemKeys?('<br><span style="color:#0e7490">item fields=['+esc(e.itemKeys.join(', '))+']</span>'):''))
+                 +(e.itemKeys?('<br><span style="color:#0e7490">item fields=['+esc(e.itemKeys.join(', '))+']</span>'):'')
+                 +(e.arrays&&Object.keys(e.arrays).length?('<br><span style="color:#047857">lines/arrays: '+esc(Object.keys(e.arrays).map(function(a){var A=e.arrays[a];return a+'['+A.len+'] → {'+(Array.isArray(A.keys)?A.keys.join(', '):A.keys)+'}';}).join('  ;  '))+'</span>'):''))
                 :('<span style="color:#b91c1c">error: '+esc(e.error)+'</span>'))+'</div>';
       }).join('');
       // summarize the keyed-read attempts (the decisive part)
@@ -679,7 +681,7 @@ if (typeof window.RetainerEngine === 'undefined') {
       var d=document.querySelector('details.dbg'); if(d) d.open=true;
       $('report').style.display='block';
       setConn('ok','Connected');
-      msg('Diagnostics ready. Send me the <b>“Keyed-read attempts”</b> lines — if any shows an <b>array</b> of rows, live mode is doable.','info');
+      msg('Diagnostics ready. Send me the <b>receipt-batch</b> and <b>sales-invoice-batch</b> lines — the <b>item fields</b> and the green <b>lines/arrays</b> structure — so I can build the cash-basis computation.','info');
     }catch(err){ setConn('err','Error'); msg('Diagnostics failed: '+esc(err.message),'err'); }
   }
   $('acct-diag').addEventListener('click',runDiagnostics);
