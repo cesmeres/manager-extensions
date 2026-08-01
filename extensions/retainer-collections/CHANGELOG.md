@@ -2,6 +2,20 @@
 
 All notable changes to this extension. Versioning follows [SemVer](https://semver.org).
 
+## [1.3.0] — 2026-08-01
+### Changed
+- **Import is now the primary, supported path** — it reconciles to the cash-basis
+  P&L exactly (verified July: 402 invoices = ₱1,031,087.36) with a single paste,
+  and supports multi-account subtotals, date range, CSV and PDF.
+### Added (experimental, hidden)
+- A **records-based live mode** that reconstructs cash-basis collections from
+  receipts→invoices (proportional, net-of-tax). Reachable via the "experimental
+  live mode" footer link. **It does NOT tie to the P&L**: Manager recognizes
+  retainer income when it applies payments (including client *advances* applied
+  to each month's invoice), which have no receipt in the period — so a
+  receipts-based reconstruction structurally undercounts (~60% on July). Kept for
+  R&D; not the supported path. Includes the P&L-account selector and diagnostics.
+
 ## [1.2.2] — 2026-08-01
 ### Fixed
 - Unwrap the api4 { key, item } envelope — real fields live in `item`. This is why accounts/GL came back empty. Accounts now load from `profit-and-loss-statement-account-batch`; GL fields read from `item`.

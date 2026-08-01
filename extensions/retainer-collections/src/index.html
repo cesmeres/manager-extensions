@@ -142,20 +142,20 @@ pre.raw{background:#0b1220;color:#cbd5e1;padding:12px;border-radius:8px;overflow
   <div class="rpt-head">
     <div class="firm" id="firm">ESMERES OUTSOURCING &amp; CONSULTANCY INC.</div>
     <div class="rpt-title">Retainer Collections</div>
-    <div class="rpt-sub" id="period-sub">Choose a date range and load data</div>
+    <div class="rpt-sub" id="period-sub">Paste your cash-basis retainer detail to build the report</div>
     <div class="rpt-basis">Cash Basis</div>
   </div>
 
   <!-- ================= TOOLBAR ================= -->
   <div class="toolbar noprint">
     <div class="tabs">
-      <div class="tab active" data-tab="live">Load from Manager</div>
-      <div class="tab" data-tab="import">Paste / import detail</div>
-      <span style="margin-left:auto"><span class="conn" id="conn"><span class="dot"></span><span id="conn-txt">Not connected</span></span></span>
+      <div class="tab" data-tab="live" id="tab-live" style="display:none">Load from Manager (experimental)</div>
+      <div class="tab active" data-tab="import">Paste / import detail</div>
+      <span style="margin-left:auto"><span class="conn" id="conn" style="display:none"><span class="dot"></span><span id="conn-txt">Not connected</span></span></span>
     </div>
 
-    <!-- LIVE -->
-    <div class="pane active" id="pane-live">
+    <!-- LIVE (experimental; hidden by default — does not reconcile to the P&L, see footer) -->
+    <div class="pane" id="pane-live">
       <div class="row">
         <div class="fld"><label>From date</label><input id="live-from" type="date"></div>
         <div class="fld"><label>To date</label><input id="live-to" type="date"></div>
@@ -175,8 +175,8 @@ pre.raw{background:#0b1220;color:#cbd5e1;padding:12px;border-radius:8px;overflow
       <div class="hint">Loads your <b>Profit &amp; Loss accounts</b> so you can tick the retainer account(s) — no need to type the name. It then pulls the cash-basis General&nbsp;Ledger for the date range, keeps the selected accounts, and nets each invoice (Credit&nbsp;&minus;&nbsp;Debit) per account. Multiple accounts get their own subtotal plus a grand total.</div>
     </div>
 
-    <!-- IMPORT -->
-    <div class="pane" id="pane-import">
+    <!-- IMPORT (primary) -->
+    <div class="pane active" id="pane-import">
       <div class="row" style="margin-bottom:8px">
         <div class="fld"><label>From date (optional)</label><input id="imp-from" type="date"></div>
         <div class="fld"><label>To date (optional)</label><input id="imp-to" type="date"></div>
@@ -242,7 +242,8 @@ pre.raw{background:#0b1220;color:#cbd5e1;padding:12px;border-radius:8px;overflow
     </details>
   </div>
 
-  <div class="foot">Retainer Collections · cash-basis · generated <span id="gen-ts"></span></div>
+  <div class="foot">Retainer Collections · cash-basis · generated <span id="gen-ts"></span>
+    · <a href="#" id="reveal-live" style="color:var(--dim)">experimental live mode</a></div>
 </div>
 
 <script src="engine.js"></script>
@@ -926,11 +927,18 @@ if (typeof window.RetainerEngine === 'undefined') {
   }
   $('btn-load').addEventListener('click',loadLiveRecords);
 
-  (function probe(){
+  function runProbe(){
     if(window.self===window.top){ setConn('err','Standalone (import only)'); return; }
     setConn('busy','Checking…');
     bridge('/api4/businesses?PageSize=1').then(function(){ setConn('ok','Connected'); loadAccounts(); }).catch(function(){ setConn('err','No response'); });
-  })();
+  }
+  // Discreet reveal for the experimental live mode (kept for R&D; does not tie to the P&L).
+  var revealLink=$('reveal-live');
+  if(revealLink) revealLink.addEventListener('click',function(e){ e.preventDefault();
+    $('tab-live').style.display=''; $('conn').style.display='';
+    document.querySelector('.tab[data-tab="live"]').click();
+    runProbe(); revealLink.style.display='none';
+  });
 
   /* ======================= EXPORT ======================= */
   $('btn-print').addEventListener('click',function(){ window.print(); });

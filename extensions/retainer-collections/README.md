@@ -15,39 +15,33 @@ figure.
 
 ## Files
 - `index.html` — the extension UI.
-- `engine.js` — the transform logic (kept separate so it can be unit-tested).
-  Host **both files together** in the same folder.
+- `engine.js` — the import transform logic (kept separate so it can be unit-tested).
+- `cashbasis.js` — the experimental records-based reconstruction (see bottom).
+  Host all files together; the built single-file in `dist/` inlines them.
 
-## Date range & multiple accounts
-- **Date range** — set **From** and **To** (e.g. Jan 1 – Mar 31, 2026), not just a
-  single month. Collections are netted per invoice across the whole range.
-- **Multiple accounts** — when the source has more than one income account, an
-  **account picker** appears. Tick 2+ accounts to get a **subtotal per account**
-  plus a **grand total**; ticking/unticking re-renders and recomputes instantly.
-  A single-account source renders as a simple client-grouped list.
+## How to run it (the supported path)
+In Manager, open the cash-basis ledger for the period — a single-account
+drill-down, **or** the *General Ledger Transactions* report with an **Account**
+column for multiple accounts — select the table and **copy**, then **paste** it
+into the box (or drop a **.csv**) and click **Build report**.
 
-## Two ways to run it
+- **Reconciles to the penny.** It nets each invoice (**Credit − Debit = cash
+  collected**), drops untouched invoices, groups by client, and totals — matching
+  the P&L. *Verified July 2026: 402 invoices = ₱1,031,087.36.*
+- **Date range** — optional From/To filter (e.g. Jan 1 – Mar 31, 2026).
+- **Multiple accounts** — include an **Account** column and an account picker
+  appears: tick 2+ accounts for **per-account subtotals + a grand total**.
+- **Private** — nothing leaves the browser; no ChatGPT, no upload.
+- Export **CSV** / **Print → PDF**.
 
-### 1. Load from Manager (no export)
-Pulls the cash-basis general ledger for the **date range** through Manager's
-extension bridge, keeps accounts whose name contains *Retainer* (adjust
-**"Accounts to include (name contains)"** for your naming), and builds the
-report. Set **From/To** and click **Load report**.
-
-> First run: confirm the **Net** figure equals your P&L. The exact api4
-> field/parameter names for the cash-basis ledger vary by Manager build — the
-> **Data inspector** (bottom of the report) shows the GL fields it detected and a
-> raw sample so any mapping issue takes seconds to spot. Note: cash-basis
-> boundary rows are synthesised by Manager's report for a chosen range, so if
-> your build only serves the raw (accrual) ledger to the API, use mode 2.
-
-### 2. Paste / import detail (works offline, always reconciles)
-In Manager, open the cash-basis ledger for the range (a single-account
-drill-down, **or** the General Ledger Transactions report with an **Account**
-column for multiple accounts), select the table and **copy**, then **paste** it
-into the box (or drop a **.csv**) and click **Build report**. Include the
-**Account** column to get per-account subtotals. No file leaves your machine;
-nothing goes to ChatGPT.
+## Experimental: live mode (does not reconcile)
+A hidden "experimental live mode" link (page footer) reveals a records-based
+reconstruction that pulls receipts + invoices via the API and attributes each
+payment to the retainer account proportionally, net-of-tax. **It does not tie to
+the P&L** and is not the supported path: Manager recognises retainer income when
+it applies payments — including client **advances** applied to each month's
+invoice, which have no receipt in the period — so a receipts-based reconstruction
+structurally undercounts (~60% on July 2026). Kept for R&D only.
 
 Both modes produce the same on-screen report with **Export CSV** (account
 subtotals included) and **Print / Save PDF** buttons.
