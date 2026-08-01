@@ -1,0 +1,1398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Self-contained. Talks to Manager only through the sandboxed postMessage
+     bridge (no outbound network). Safe to host on GitHub Pages / Netlify. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; frame-ancestors *; form-action 'none'; base-uri 'self';">
+<meta name="referrer" content="no-referrer">
+<title>Retainer Collections — Manager.io</title>
+<style>
+:root{
+  --ink:#0f172a; --ink2:#334155; --muted:#64748b; --dim:#94a3b8;
+  --line:#e2e8f0; --line2:#cbd5e1; --bg:#f8fafc; --card:#ffffff;
+  --brand:#0e7490; --brand2:#0891b2; --brandbg:#ecfeff;
+  --green:#047857; --greenbg:#ecfdf5; --amber:#b45309; --amberbg:#fffbeb;
+  --red:#b91c1c; --redbg:#fef2f2; --radius:10px;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);background:var(--bg);color:var(--ink);font-size:13px;line-height:1.5;padding:18px 20px 60px}
+h1,h2,h3{line-height:1.2}
+a{color:var(--brand)}
+.wrap{max-width:1080px;margin:0 auto}
+
+/* ---- header ---- */
+.rpt-head{text-align:center;padding:6px 0 14px;border-bottom:2px solid var(--ink);margin-bottom:16px}
+.firm{font-size:15px;font-weight:700;letter-spacing:.02em}
+.rpt-title{font-size:20px;font-weight:800;margin-top:2px}
+.rpt-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.rpt-basis{font-size:11px;font-weight:600;color:var(--brand);text-transform:uppercase;letter-spacing:.08em;margin-top:4px}
+
+/* ---- toolbar ---- */
+.toolbar{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin-bottom:14px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tab{padding:6px 14px;border:1px solid var(--line2);border-radius:20px;background:#fff;color:var(--ink2);font-weight:600;font-size:12px;cursor:pointer}
+.tab.active{background:var(--brand);border-color:var(--brand);color:#fff}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.fld{display:flex;flex-direction:column;gap:3px}
+.fld label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.fld input,.fld select{padding:6px 9px;border:1px solid var(--line2);border-radius:6px;font-size:13px;color:var(--ink);background:#fff;outline:none;font-family:var(--sans)}
+.fld input:focus,.fld select:focus{border-color:var(--brand2)}
+.btn{border:none;border-radius:7px;padding:7px 16px;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--brand);color:#fff}
+.btn-primary:hover{background:var(--brand2)}
+.btn-ghost{background:#fff;border:1px solid var(--line2);color:var(--ink2)}
+.btn-ghost:hover{background:var(--bg)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.hint{font-size:11px;color:var(--muted);margin-top:8px}
+.pane{display:none}
+.pane.active{display:block}
+textarea#paste{width:100%;min-height:90px;border:1px dashed var(--line2);border-radius:8px;padding:10px;font-family:var(--mono);font-size:11px;resize:vertical;outline:none}
+textarea#paste:focus{border-color:var(--brand2)}
+.drop{border:1px dashed var(--line2);border-radius:8px;padding:10px;text-align:center;color:var(--muted);font-size:12px;margin-top:8px;cursor:pointer}
+.drop.over{border-color:var(--brand);background:var(--brandbg);color:var(--brand)}
+
+/* connection pill */
+.conn{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;border:1px solid var(--line2);color:var(--muted)}
+.conn .dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+.conn.ok{color:var(--green);border-color:#a7f3d0;background:var(--greenbg)} .conn.ok .dot{background:var(--green)}
+.conn.err{color:var(--red);border-color:#fecaca;background:var(--redbg)} .conn.err .dot{background:var(--red)}
+.conn.busy .dot{background:var(--amber);animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.3}}
+
+/* ---- account picker ---- */
+.acctpick{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;margin-bottom:14px}
+.acctpick-head{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.acctpick-head .tools a{cursor:pointer;font-weight:600;text-transform:none;letter-spacing:0;margin-left:8px}
+#acct-list{display:flex;flex-wrap:wrap;gap:8px}
+.acct-chip{display:flex;align-items:center;gap:7px;border:1px solid var(--line2);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;background:#fff}
+.acct-chip:hover{border-color:var(--brand2)}
+.acct-chip input{margin:0;cursor:pointer}
+.acct-chip .chip-name{font-weight:600}
+.acct-chip .chip-amt{font-family:var(--mono);color:var(--muted);font-size:11px}
+/* P&L account selector (live mode) */
+.pl-accounts{max-height:160px;overflow:auto;border:1px solid var(--line2);border-radius:6px;padding:6px;background:#fff;min-width:260px}
+.pl-accounts .pl-item{display:flex;align-items:center;gap:7px;padding:3px 5px;font-size:12px;cursor:pointer;border-radius:4px}
+.pl-accounts .pl-item:hover{background:var(--brandbg)}
+.pl-accounts .pl-item input{margin:0;cursor:pointer}
+.pl-accounts .pl-empty{color:var(--muted);font-size:11.5px;padding:6px}
+.mini-link{font-size:11px;font-weight:600;cursor:pointer;margin-left:8px}
+
+/* ---- status / errors ---- */
+.msg{border-radius:8px;padding:10px 13px;font-size:12.5px;margin-bottom:14px}
+.msg.err{background:var(--redbg);border:1px solid #fecaca;color:var(--red)}
+.msg.info{background:var(--brandbg);border:1px solid #a5f3fc;color:var(--brand)}
+.msg.warn{background:var(--amberbg);border:1px solid #fde68a;color:var(--amber)}
+
+/* ---- summary cards ---- */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;border-top:3px solid var(--brand)}
+.card.g{border-top-color:var(--green)} .card.a{border-top-color:var(--amber)} .card.n{border-top-color:var(--ink)}
+.card .lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.card .val{font-size:21px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums}
+.card .sub{font-size:11px;color:var(--muted);margin-top:1px}
+
+/* reconciliation strip */
+.recon{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin-bottom:16px}
+.recon h3{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px}
+.recon table{width:100%;font-size:12.5px;border-collapse:collapse}
+.recon td{padding:3px 0}
+.recon td:last-child{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono)}
+.recon tr.tot td{border-top:1px solid var(--line);font-weight:800;padding-top:6px}
+.recon .ok{color:var(--green);font-weight:700}
+.recon .bad{color:var(--red);font-weight:700}
+
+/* ---- section + tables ---- */
+.section{margin-bottom:22px}
+.section h2{font-size:15px;font-weight:800;padding-bottom:6px;border-bottom:2px solid var(--line2);margin-bottom:8px;display:flex;justify-content:space-between;align-items:baseline}
+.section h2 .badge{font-size:11px;font-weight:700;color:var(--muted)}
+table.grid{width:100%;border-collapse:collapse;font-size:12.5px}
+table.grid th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line2);background:var(--bg)}
+table.grid th.num,table.grid td.num{text-align:right;font-variant-numeric:tabular-nums}
+table.grid td{padding:7px 10px;border-bottom:1px solid var(--line)}
+table.grid tr.acct-row td{background:var(--brand);color:#fff;font-weight:800;font-size:13px;letter-spacing:.02em}
+table.grid tr.acct-sub td{background:#e0f7fb;font-weight:800;color:var(--brand);border-top:1px solid var(--brand2);border-bottom:2px solid var(--brand2)}
+table.grid tr.client-row td{background:var(--brandbg);font-weight:700;color:var(--brand)}
+table.grid tr.sub td{background:#fbfdff;font-weight:700;color:var(--ink2);border-bottom:1px solid var(--line2)}
+table.grid tr.grand td{font-weight:800;font-size:13.5px;border-top:2px solid var(--ink);background:#fff}
+table.grid td.mono{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.amt{font-family:var(--mono)}
+.empty{color:var(--muted);font-style:italic;padding:14px 10px}
+
+/* debug */
+details.dbg{margin-top:18px;font-size:12px}
+details.dbg summary{cursor:pointer;color:var(--muted);font-weight:600}
+pre.raw{background:#0b1220;color:#cbd5e1;padding:12px;border-radius:8px;overflow:auto;font-size:11px;max-height:280px;margin-top:8px}
+.foot{margin-top:24px;text-align:center;font-size:11px;color:var(--dim)}
+
+/* view tabs + Pareto (80/20) */
+.view-tabs{display:flex;gap:6px;margin-bottom:14px}
+.vtab{padding:6px 14px;border:1px solid var(--line2);border-radius:20px;background:#fff;color:var(--ink2);font-weight:700;font-size:12px;cursor:pointer}
+.vtab.active{background:var(--ink);border-color:var(--ink);color:#fff}
+.pareto-callout{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px}
+.pareto-callout .big{font-size:16px;font-weight:800;color:var(--ink);line-height:1.35}
+.pareto-callout .big b{color:var(--brand)}
+.pareto-callout .verdict{margin-top:10px;font-size:13px;padding:8px 11px;border-radius:8px;font-weight:600}
+.pareto-callout .verdict.yes{background:var(--greenbg);color:var(--green);border:1px solid #a7f3d0}
+.pareto-callout .verdict.close{background:var(--amberbg);color:var(--amber);border:1px solid #fde68a}
+.pareto-callout ul{margin:10px 0 0 18px;font-size:12.5px;color:var(--ink2)}
+.pareto-callout li{margin:3px 0}
+table.pareto{width:100%;border-collapse:collapse;font-size:12.5px}
+table.pareto th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line2)}
+table.pareto th.num,table.pareto td.num{text-align:right;font-variant-numeric:tabular-nums}
+table.pareto td{padding:6px 10px;border-bottom:1px solid var(--line)}
+table.pareto tr.vital td{background:var(--brandbg)}
+table.pareto tr.cutoff td{border-bottom:2px dashed var(--amber)}
+.pbar-wrap{width:120px;background:var(--bg);border-radius:4px;overflow:hidden}
+.pbar{height:9px;border-radius:4px;background:var(--brand2)}
+.pbar.dim{background:var(--line2)}
+.rank{color:var(--muted);font-variant-numeric:tabular-nums}
+
+@media print{
+  body{background:#fff;padding:0;font-size:11px}
+  .toolbar,.drop,.acctpick,details.dbg,.foot,.noprint{display:none!important}
+  .card,.recon,.section{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="rpt-head">
+    <div class="firm" id="firm">ESMERES OUTSOURCING &amp; CONSULTANCY INC.</div>
+    <div class="rpt-title">Retainer Collections</div>
+    <div class="rpt-sub" id="period-sub">Paste your cash-basis retainer detail to build the report</div>
+    <div class="rpt-basis">Cash Basis</div>
+  </div>
+
+  <!-- ================= TOOLBAR ================= -->
+  <div class="toolbar noprint">
+    <div class="tabs">
+      <div class="tab" data-tab="live" id="tab-live" style="display:none">Load from Manager (experimental)</div>
+      <div class="tab active" data-tab="import">Paste / import detail</div>
+      <span style="margin-left:auto"><span class="conn" id="conn" style="display:none"><span class="dot"></span><span id="conn-txt">Not connected</span></span></span>
+    </div>
+
+    <!-- LIVE (experimental; hidden by default — does not reconcile to the P&L, see footer) -->
+    <div class="pane" id="pane-live">
+      <div class="row">
+        <div class="fld"><label>From date</label><input id="live-from" type="date"></div>
+        <div class="fld"><label>To date</label><input id="live-to" type="date"></div>
+        <div class="fld" style="flex:1 1 300px;min-width:280px">
+          <label>Profit &amp; Loss accounts
+            <a class="mini-link" id="acct-load">↻ Load</a>
+            <a class="mini-link" id="acct-tick-ret">tick “Retainer”</a>
+            <a class="mini-link" id="acct-clear">clear</a>
+            <a class="mini-link" id="acct-diag" style="color:#b45309">🔍 diagnose</a>
+          </label>
+          <input id="acct-search" type="text" placeholder="search accounts…" style="width:100%;margin-bottom:4px">
+          <div id="pl-accounts" class="pl-accounts"><div class="pl-empty">Click “Load” to fetch your P&amp;L accounts, then tick the retainer account(s).</div></div>
+        </div>
+        <div class="fld"><label>Description contains (optional)</label><input id="live-desc" type="text" value="" style="width:130px" placeholder="e.g. Retainer"></div>
+        <button class="btn btn-primary" id="btn-load">Load report</button>
+      </div>
+      <div class="hint">Loads your <b>Profit &amp; Loss accounts</b> so you can tick the retainer account(s) — no need to type the name. It then pulls the cash-basis General&nbsp;Ledger for the date range, keeps the selected accounts, and nets each invoice (Credit&nbsp;&minus;&nbsp;Debit) per account. Multiple accounts get their own subtotal plus a grand total.</div>
+    </div>
+
+    <!-- IMPORT (primary) -->
+    <div class="pane active" id="pane-import">
+      <div class="row" style="margin-bottom:8px">
+        <div class="fld"><label>From date (optional)</label><input id="imp-from" type="date"></div>
+        <div class="fld"><label>To date (optional)</label><input id="imp-to" type="date"></div>
+        <div class="fld"><label>Period label (if no dates)</label><input id="imp-period" type="text" placeholder="e.g. Jan–Mar 2026" style="width:150px"></div>
+        <div class="fld"><label>Description contains (optional)</label><input id="imp-desc" type="text" value="" style="width:140px" placeholder="e.g. Retainer"></div>
+        <button class="btn btn-primary" id="btn-build">Build report</button>
+      </div>
+      <textarea id="paste" placeholder="Paste a cash-basis report here (copy the on-screen table from Manager, or a selection from Excel). Two formats work:  (1) GL drill-down: Date, Transaction, Customer, Debit, Credit (+ optional Account).  (2) Receipt-level: Date Paid, Client, Receipt #, Invoice #, Income Account, Amount Collected."></textarea>
+      <div class="drop" id="drop">…or drop / choose a <b>.csv</b> export of the same detail &nbsp;<input type="file" id="file" accept=".csv,text/csv" style="display:none"></div>
+      <div class="hint">Reproduces the exact reconciled report offline — no export to ChatGPT. Accepts either the <b>Debit/Credit</b> drill-down or a <b>“Amount Collected”</b> receipt report. Include an <b>Account</b> / <b>Income Account</b> column for per-account subtotals + grand total. Then switch to the <b>Client concentration (80/20)</b> tab for the Pareto analysis. Header names matched loosely; tab- or comma-separated both work.</div>
+    </div>
+  </div>
+
+  <div id="messages"></div>
+
+  <!-- account picker (shown when >1 account is present) -->
+  <div class="acctpick noprint" id="acct-picker" style="display:none">
+    <div class="acctpick-head">
+      <span>Accounts in report — tick to include</span>
+      <span class="tools"><a id="acct-all">Select all</a><a id="acct-none">None</a></span>
+    </div>
+    <div id="acct-list"></div>
+  </div>
+
+  <!-- ================= REPORT ================= -->
+  <div id="report" style="display:none">
+
+    <div class="view-tabs noprint">
+      <div class="vtab active" data-view="main">Collections report</div>
+      <div class="vtab" data-view="pareto">Client concentration (80/20)</div>
+    </div>
+
+    <!-- ===== VIEW: collections ===== -->
+    <div id="view-main">
+      <div class="cards">
+        <div class="card g"><div class="lbl">Gross collections</div><div class="val" id="c-gross">—</div><div class="sub" id="c-gross-sub"></div></div>
+        <div class="card a"><div class="lbl">Adjustments / reversals</div><div class="val" id="c-adj">—</div><div class="sub" id="c-adj-sub"></div></div>
+        <div class="card n"><div class="lbl">Net cash-basis retainer income</div><div class="val" id="c-net">—</div><div class="sub">= what hits the P&amp;L</div></div>
+        <div class="card"><div class="lbl">Clients</div><div class="val" id="c-clients">—</div><div class="sub" id="c-clients-sub"></div></div>
+      </div>
+
+      <div class="recon">
+        <h3>Reconciliation to the ledger</h3>
+        <table>
+          <tr><td>Total credits in source</td><td id="r-credit">—</td></tr>
+          <tr><td>Less: total debits in source</td><td id="r-debit">—</td></tr>
+          <tr class="tot"><td>Net cash-basis amount</td><td id="r-net">—</td></tr>
+          <tr><td>Gross collections + adjustments</td><td id="r-check">—</td></tr>
+          <tr><td>Ties out?</td><td id="r-tie">—</td></tr>
+        </table>
+      </div>
+
+      <div class="section">
+        <h2>Paid Retainers <span class="badge" id="paid-badge"></span></h2>
+        <div id="paid-container"></div>
+      </div>
+
+      <div class="section" id="sec-adj">
+        <h2>Adjustments &amp; Reversals <span class="badge" id="adj-badge"></span></h2>
+        <div id="adj-container"></div>
+      </div>
+    </div>
+
+    <!-- ===== VIEW: Pareto / 80-20 ===== -->
+    <div id="view-pareto" style="display:none">
+      <div id="pareto-summary"></div>
+      <div class="section">
+        <h2>Clients ranked by collections <span class="badge" id="pareto-badge"></span></h2>
+        <div id="pareto-container"></div>
+      </div>
+    </div>
+
+    <div class="noprint" style="display:flex;gap:8px;margin:8px 0 4px">
+      <button class="btn btn-ghost" id="btn-csv">⬇ Export CSV</button>
+      <button class="btn btn-ghost" id="btn-print">🖨 Print / Save PDF</button>
+    </div>
+
+    <details class="dbg noprint"><summary>Data inspector (field mapping &amp; raw sample)</summary>
+      <div id="dbg-map"></div>
+      <pre class="raw" id="dbg-raw"></pre>
+    </details>
+  </div>
+
+  <div class="foot">Retainer Collections · cash-basis · generated <span id="gen-ts"></span>
+    · <a href="#" id="reveal-live" style="color:var(--dim)">experimental live mode</a></div>
+</div>
+
+<script>
+/* inlined: engine.js */
+/* ============================================================================
+   Retainer Collections — transform engine (Manager.io cash basis)
+   ----------------------------------------------------------------------------
+   Pure, dependency-free. Turns cash-basis General-Ledger-Transactions rows into
+   a "collections by client" report, grouped by income account.
+
+   Reconciliation logic (verified against Manager.io's cash-basis P&L):
+     - The account drill-down has boundary rows per invoice (beginning receivable
+       + ending balance) split across Debit/Credit.
+     - Collection for an invoice this period = round(SUM(Credit) - SUM(Debit), 2),
+       computed within each (account, invoice).
+     - net > 0  -> a collection (Paid Retainers)
+       net < 0  -> a reversal   (Adjustments)
+       net == 0 -> no cash moved this period (dropped)
+     - Per-account subtotal = its collections; grand total = all selected accounts.
+
+   transform() groups by ACCOUNT. Rows carry an optional `account`; when the
+   source has no account column, everything falls into one group whose label is
+   opts.defaultAccount (or "").
+
+   Exposed as a browser global (window.RetainerEngine) and as a CommonJS module.
+   ========================================================================== */
+(function (root) {
+  'use strict';
+
+  var INVOICE_RE = /Sales\s+Invoice\s*[—–\-]\s*(\S+)\s*[—–\-]\s*(\S+)/i;
+
+  function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+
+  function num(v) {
+    if (v === null || v === undefined || v === '') return 0;
+    if (typeof v === 'number') return isFinite(v) ? v : 0;
+    var s = String(v).replace(/,/g, '').replace(/[^0-9.\-]/g, '').trim();
+    if (s === '' || s === '-' || s === '.') return 0;
+    var n = parseFloat(s);
+    return isFinite(n) ? n : 0;
+  }
+
+  function parseTransaction(text) {
+    var t = String(text == null ? '' : text);
+    var m = t.match(INVOICE_RE);
+    return {
+      invoice: m ? m[1] : null,
+      invoiceDate: m ? m[2] : null,
+      key: m ? ('INV:' + m[1]) : ('TXN:' + t.trim())
+    };
+  }
+
+  function cleanName(v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); }
+
+  function splitCode(name) {
+    var m = /^(\d{3,})\s*[-–—]\s*(.*)$/.exec(name);
+    if (m) return { code: m[1], name: m[2].trim() };
+    return { code: '', name: name };
+  }
+
+  /* Build one account's breakdown from its accumulated invoices. */
+  function buildAccount(account, byInvoice, order, td, tc) {
+    var paid = [], adjustments = [], zeroCount = 0;
+    for (var k = 0; k < order.length; k++) {
+      var it = byInvoice[order[k]];
+      var net = round2(it.credit - it.debit);
+      var sc = splitCode(it.customer);
+      var rec = {
+        account: account,
+        customer: it.customer, clientCode: sc.code, clientName: sc.name,
+        invoice: it.invoice, invoiceDate: it.invoiceDate, transaction: it.transaction,
+        amount: net, debit: round2(it.debit), credit: round2(it.credit)
+      };
+      if (net > 0) paid.push(rec);
+      else if (net < 0) adjustments.push(rec);
+      else zeroCount++;
+    }
+    var byClient = function (a, b) {
+      var an = (a.customer || '').toLowerCase(), bn = (b.customer || '').toLowerCase();
+      if (an < bn) return -1; if (an > bn) return 1;
+      var ai = parseInt(a.invoice, 10), bi = parseInt(b.invoice, 10);
+      if (isFinite(ai) && isFinite(bi)) return ai - bi;
+      return String(a.invoice).localeCompare(String(b.invoice));
+    };
+    paid.sort(byClient); adjustments.sort(byClient);
+
+    var clients = [], seen = Object.create(null);
+    for (var j = 0; j < paid.length; j++) {
+      var c = paid[j].customer;
+      if (!(c in seen)) { seen[c] = { customer: c, count: 0, amount: 0 }; clients.push(seen[c]); }
+      seen[c].count++;
+      seen[c].amount = round2(seen[c].amount + paid[j].amount);
+    }
+    var gross = paid.reduce(function (s, x) { return round2(s + x.amount); }, 0);
+    var adj = adjustments.reduce(function (s, x) { return round2(s + x.amount); }, 0);
+    return {
+      account: account, paid: paid, adjustments: adjustments, clients: clients, zeroCount: zeroCount,
+      summary: {
+        grossPositive: gross, adjustments: adj, net: round2(gross + adj),
+        invoicesWithCollections: paid.length, clientsWithCollections: clients.length,
+        totalDebit: round2(td), totalCredit: round2(tc), zeroCount: zeroCount
+      }
+    };
+  }
+
+  /* Grand totals across an array of account breakdowns (used for the whole
+     report AND for the live subset the user has ticked). */
+  function grandSummary(accounts) {
+    var gross = 0, adj = 0, inv = 0, td = 0, tc = 0, zero = 0, clients = Object.create(null);
+    for (var i = 0; i < accounts.length; i++) {
+      var a = accounts[i].summary;
+      gross = round2(gross + a.grossPositive); adj = round2(adj + a.adjustments);
+      inv += a.invoicesWithCollections; td = round2(td + a.totalDebit); tc = round2(tc + a.totalCredit);
+      zero += a.zeroCount || 0;
+      for (var j = 0; j < accounts[i].paid.length; j++) clients[accounts[i].paid[j].customer] = 1;
+    }
+    return {
+      grossPositive: gross, adjustments: adj, net: round2(gross + adj),
+      invoicesWithCollections: inv, clientsWithCollections: Object.keys(clients).length,
+      totalDebit: td, totalCredit: tc, zeroCount: zero, accountCount: accounts.length
+    };
+  }
+
+  /* ------------------------------------------------------------------------
+     transform(rows, opts)
+       rows : array of { date, transaction, customer, description, debit, credit,
+                         account? }
+       opts : { descriptionFilter?, defaultAccount? }
+     returns { accounts:[...], summary:{grand}, paid:[flat], adjustments:[flat] }
+     ---------------------------------------------------------------------- */
+  function transform(rows, opts) {
+    opts = opts || {};
+    var descFilter = opts.descriptionFilter ? String(opts.descriptionFilter).toLowerCase() : null;
+    var defAcct = opts.defaultAccount != null ? String(opts.defaultAccount) : '';
+
+    var acc = Object.create(null), accOrder = [];
+
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i] || {};
+      var txt = r.transaction != null ? r.transaction : (r.Transaction || '');
+      if (!txt) continue;
+      var desc = r.description != null ? r.description : (r.Description || '');
+      if (descFilter && String(desc).toLowerCase().indexOf(descFilter) === -1) continue;
+      var debit = num(r.debit != null ? r.debit : r.Debit);
+      var credit = num(r.credit != null ? r.credit : r.Credit);
+      if (debit === 0 && credit === 0) continue;
+
+      var account = cleanName(r.account != null ? r.account : r.Account) || defAcct;
+      var e = acc[account];
+      if (!e) { e = acc[account] = { byInvoice: Object.create(null), order: [], td: 0, tc: 0 }; accOrder.push(account); }
+
+      var p = parseTransaction(txt);
+      var cust = cleanName(r.customer != null ? r.customer : r.Customer);
+      var g = e.byInvoice[p.key];
+      if (!g) {
+        g = e.byInvoice[p.key] = { key: p.key, invoice: p.invoice, invoiceDate: p.invoiceDate, transaction: cleanName(txt), customer: cust, debit: 0, credit: 0 };
+        e.order.push(p.key);
+      }
+      if (!g.customer && cust) g.customer = cust;
+      g.debit += debit; g.credit += credit; e.td += debit; e.tc += credit;
+    }
+
+    var accounts = accOrder.map(function (name) {
+      var e = acc[name];
+      return buildAccount(name, e.byInvoice, e.order, e.td, e.tc);
+    });
+    accounts.sort(function (a, b) { return (a.account || '').toLowerCase().localeCompare((b.account || '').toLowerCase()); });
+
+    // Flat lists (all accounts) for convenience / CSV.
+    var paid = [], adjustments = [];
+    accounts.forEach(function (a) { paid = paid.concat(a.paid); adjustments = adjustments.concat(a.adjustments); });
+
+    return { accounts: accounts, summary: grandSummary(accounts), paid: paid, adjustments: adjustments };
+  }
+
+  var api = {
+    transform: transform, grandSummary: grandSummary,
+    parseTransaction: parseTransaction, num: num, round2: round2, splitCode: splitCode, cleanName: cleanName
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  root.RetainerEngine = api;
+})(typeof window !== 'undefined' ? window : this);
+
+</script>
+<script>
+/* inlined: cashbasis.js */
+/* ============================================================================
+   Cash-basis reconstruction from source records (Manager.io)
+   ----------------------------------------------------------------------------
+   Live mode can't read Manager's rendered cash-basis report, so we rebuild it
+   from records the API DOES expose: receipts (money in) allocated to sales
+   invoices, attributed to income accounts net-of-tax, proportionally.
+
+   Recognition model (matches Manager's cash-basis P&L for tax-free lines):
+     income to account A, from a receipt payment P applied to invoice I
+       = P * ( netA(I) / total(I) )
+     where netA(I) = sum of I's line amounts posting to A,
+           total(I) = sum of ALL I's line amounts (the invoice total).
+     Rounded to 2 dp per (receipt-payment, account) — this reproduces the
+     sub-unit residuals seen in partial payments across multi-line invoices.
+
+   Pure & dependency-free; unit-tested with synthetic fixtures. Emits GL-like
+   rows { account, transaction, customer, credit, debit } so the existing
+   RetainerEngine.transform() renders them with per-account subtotals.
+   ========================================================================== */
+(function (root) {
+  'use strict';
+  function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+
+  /* invoiceTotal: sum of all line net amounts (+ tax if present). */
+  function invoiceTotal(inv) {
+    if (typeof inv.total === 'number' && inv.total) return inv.total;
+    var t = 0;
+    (inv.lines || []).forEach(function (l) { t += (l.amount || 0) + (l.tax || 0); });
+    return round2(t);
+  }
+
+  /* Sum of an invoice's net line amounts posting to each selected account. */
+  function netByAccount(inv, sel) {
+    var m = Object.create(null);
+    (inv.lines || []).forEach(function (l) {
+      if (sel.has(l.account)) m[l.account] = (m[l.account] || 0) + (l.amount || 0);
+    });
+    return m;
+  }
+
+  /* ------------------------------------------------------------------------
+     compute(receipts, invoicesByKey, opts) -> { rows, stats }
+       receipts       : [{ key, date, customerKey, allocations:[{invoice, amount}],
+                           directs:[{account, customerKey, amount}] }]
+       invoicesByKey  : { <invoiceKey>: { customerKey, reference, date,
+                                          lines:[{account, amount, tax?}], total? } }
+       opts           : { accounts:Set<accountKey>, sign?:+1|-1 }
+     rows: [{ accountKey, customerKey, invoice, invoiceDate, amount }]
+     ---------------------------------------------------------------------- */
+  function compute(receipts, invoicesByKey, opts) {
+    opts = opts || {};
+    var sel = opts.accounts;                 // Set of selected income account keys
+    var sign = opts.sign === -1 ? -1 : 1;    // credit notes pass -1
+    var rows = [];
+    var stats = { receiptsUsed: 0, allocations: 0, directs: 0, unknownInvoices: {}, matchedPayments: 0 };
+
+    (receipts || []).forEach(function (r) {
+      var used = false;
+      (r.allocations || []).forEach(function (al) {
+        stats.allocations++;
+        var inv = invoicesByKey[al.invoice];
+        if (!inv) { stats.unknownInvoices[al.invoice] = 1; return; }
+        var total = invoiceTotal(inv);
+        if (!total) return;
+        var byAcct = netByAccount(inv, sel);
+        var hit = false;
+        for (var ak in byAcct) {
+          var share = round2(sign * al.amount * (byAcct[ak] / total));
+          if (share === 0) continue;
+          rows.push({
+            accountKey: ak,
+            customerKey: inv.customerKey || r.customerKey || al.customerKey || '',
+            invoice: inv.reference || al.invoice,
+            invoiceDate: inv.date || '',
+            amount: share
+          });
+          hit = true;
+        }
+        if (hit) { used = true; stats.matchedPayments++; }
+      });
+      (r.directs || []).forEach(function (d) {
+        stats.directs++;
+        if (!sel.has(d.account)) return;
+        var amt = round2(sign * d.amount);
+        if (amt === 0) return;
+        rows.push({ accountKey: d.account, customerKey: d.customerKey || r.customerKey || '', invoice: '(direct)', invoiceDate: r.date || '', amount: amt });
+        used = true;
+      });
+      if (used) stats.receiptsUsed++;
+    });
+
+    stats.unknownInvoices = Object.keys(stats.unknownInvoices);
+    return { rows: rows, stats: stats };
+  }
+
+  /* Map compute() rows -> GL-like rows for RetainerEngine.transform().
+       names: { account:{key->name}, customer:{key->name} } */
+  function toLedgerRows(rows, names) {
+    names = names || {}; var an = names.account || {}, cn = names.customer || {};
+    return rows.map(function (x) {
+      var cust = cn[x.customerKey] || x.customerKey || '';
+      var txn = 'Sales Invoice — ' + (x.invoice || '?') + ' — ' + (x.invoiceDate || '');
+      return {
+        account: an[x.accountKey] || x.accountKey || '',
+        transaction: txn,
+        customer: cust,
+        credit: x.amount >= 0 ? x.amount : '',
+        debit: x.amount < 0 ? -x.amount : ''
+      };
+    });
+  }
+
+  var api = { compute: compute, toLedgerRows: toLedgerRows, invoiceTotal: invoiceTotal, round2: round2 };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  root.RetainerCashBasis = api;
+})(typeof window !== 'undefined' ? window : this);
+
+</script>
+<script>
+if (typeof window.RetainerEngine === 'undefined') {
+  document.getElementById('messages').innerHTML =
+    '<div class="msg err">Could not load <b>engine.js</b>. Host it alongside index.html (same folder).</div>';
+}
+</script>
+<script>
+(function(){
+  'use strict';
+  var E = window.RetainerEngine;
+  var CUR = '₱';
+  var STATE = { report:null, meta:null };
+
+  function $(id){ return document.getElementById(id); }
+  function fmt(n){ var neg=n<0; n=Math.abs(n); return (neg?'-':'')+CUR+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function msg(html,cls){ $('messages').innerHTML = html ? '<div class="msg '+(cls||'info')+'">'+html+'</div>' : ''; }
+  function iso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function toDate(v){ if(!v&&v!==0) return null; var s=String(v).trim(); if(!s) return null;
+    var m=/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(s); if(m){var y=+m[3]; if(y<100)y+=2000; return new Date(y,+m[1]-1,+m[2]);}
+    m=/^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s); if(m) return new Date(+m[1],+m[2]-1,+m[3]);
+    var d=new Date(s); return isNaN(d)?null:d; }
+  function rangeLabel(from,to){
+    var o={month:'short',day:'numeric',year:'numeric'};
+    if(from&&to) return from.toLocaleDateString('en-US',o)+' – '+to.toLocaleDateString('en-US',o);
+    if(from) return 'from '+from.toLocaleDateString('en-US',o);
+    if(to) return 'through '+to.toLocaleDateString('en-US',o);
+    return '';
+  }
+
+  /* default range = previous full month */
+  (function(){
+    var d=new Date(); var last=new Date(d.getFullYear(),d.getMonth(),0); var first=new Date(last.getFullYear(),last.getMonth(),1);
+    $('live-from').value=iso(first); $('live-to').value=iso(last);
+    $('gen-ts').textContent=new Date().toLocaleString();
+  })();
+
+  /* tabs */
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(t){
+    t.addEventListener('click',function(){
+      document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});
+      t.classList.add('active');
+      $('pane-live').classList.toggle('active', t.dataset.tab==='live');
+      $('pane-import').classList.toggle('active', t.dataset.tab==='import');
+    });
+  });
+
+  /* ======================= ACCOUNT PICKER ======================= */
+  function buildAcctPicker(accounts, autoTick){
+    var pick=$('acct-picker'), list=$('acct-list');
+    if(accounts.length<=1){ pick.style.display='none'; list.innerHTML=''; return; }
+    pick.style.display='';
+    var tick=(autoTick||'').toLowerCase().trim();
+    var anyMatch = tick && accounts.some(function(a){return (a.account||'').toLowerCase().indexOf(tick)>-1;});
+    list.innerHTML = accounts.map(function(a,i){
+      var on = !tick || !anyMatch || (a.account||'').toLowerCase().indexOf(tick)>-1;
+      return '<label class="acct-chip"><input type="checkbox" value="'+i+'"'+(on?' checked':'')+'>'
+        +'<span class="chip-name">'+esc(a.account||'(unnamed account)')+'</span>'
+        +'<span class="chip-amt">'+fmt(a.summary.net)+'</span></label>';
+    }).join('');
+    list.querySelectorAll('input').forEach(function(cb){ cb.addEventListener('change',renderSelected); });
+  }
+  function selectedAccounts(){
+    if(!STATE.report) return [];
+    if($('acct-picker').style.display==='none') return STATE.report.accounts.slice();
+    var idx=[]; $('acct-list').querySelectorAll('input:checked').forEach(function(cb){ idx.push(+cb.value); });
+    return idx.map(function(i){ return STATE.report.accounts[i]; });
+  }
+  $('acct-all').addEventListener('click',function(){ $('acct-list').querySelectorAll('input').forEach(function(c){c.checked=true;}); renderSelected(); });
+  $('acct-none').addEventListener('click',function(){ $('acct-list').querySelectorAll('input').forEach(function(c){c.checked=false;}); renderSelected(); });
+
+  /* report view switcher: Collections <-> 80/20 */
+  Array.prototype.forEach.call(document.querySelectorAll('.vtab'),function(t){
+    t.addEventListener('click',function(){
+      document.querySelectorAll('.vtab').forEach(function(x){x.classList.remove('active');});
+      t.classList.add('active');
+      $('view-main').style.display = t.dataset.view==='main'?'':'none';
+      $('view-pareto').style.display = t.dataset.view==='pareto'?'':'none';
+    });
+  });
+
+  /* ======================= RENDER ======================= */
+  function afterTransform(report, meta, autoTick){
+    STATE.report=report; STATE.meta=meta;
+    buildAcctPicker(report.accounts, autoTick);
+    $('report').style.display='block';
+    renderSelected();
+  }
+
+  function renderSelected(){
+    if(!STATE.report) return;
+    var accts=selectedAccounts();
+    var showAcct = accts.length>1;
+    var grand=E.grandSummary(accts);
+    var meta=STATE.meta;
+
+    $('period-sub').textContent = meta.periodLabel || '';
+    $('c-gross').textContent=fmt(grand.grossPositive); $('c-gross-sub').textContent=grand.invoicesWithCollections+' invoices';
+    $('c-adj').textContent=fmt(grand.adjustments); $('c-adj-sub').textContent=countAdj(accts)+' item(s)';
+    $('c-net').textContent=fmt(grand.net);
+    $('c-clients').textContent=String(grand.clientsWithCollections);
+    $('c-clients-sub').textContent='across '+accts.length+' account'+(accts.length===1?'':'s');
+
+    $('r-credit').textContent=fmt(grand.totalCredit);
+    $('r-debit').textContent='('+fmt(grand.totalDebit)+')';
+    $('r-net').textContent=fmt(grand.net);
+    $('r-check').textContent=fmt(E.round2(grand.grossPositive+grand.adjustments));
+    var ledgerNet=E.round2(grand.totalCredit-grand.totalDebit);
+    var ties = Math.abs(ledgerNet-grand.net)<0.005 && Math.abs((grand.grossPositive+grand.adjustments)-grand.net)<0.005;
+    $('r-tie').innerHTML = ties?'<span class="ok">Yes — balanced</span>':'<span class="bad">No — review source</span>';
+
+    $('paid-container').innerHTML = renderPaid(accts, grand, showAcct);
+    $('paid-badge').textContent = grand.invoicesWithCollections+' invoices · '+grand.clientsWithCollections+' clients'+(showAcct?(' · '+accts.length+' accounts'):'');
+
+    var adj=renderAdj(accts, grand, showAcct);
+    $('adj-container').innerHTML=adj.html;
+    $('adj-badge').textContent=adj.count+' item(s)';
+
+    renderPareto(accts, grand);
+
+    $('gen-ts').textContent=new Date().toLocaleString();
+    STATE.selected=accts; STATE.grand=grand;
+    if(!accts.length) msg('No accounts selected — tick at least one account above.','warn');
+    else if(!ties) msg('The selected accounts don’t tie to the ledger net — check the source data / field mapping in the Data inspector.','warn');
+    else msg('');
+  }
+
+  function countAdj(accts){ var n=0; accts.forEach(function(a){n+=a.adjustments.length;}); return n; }
+
+  /* ---- 80/20 (Pareto) client-concentration analysis ---- */
+  function renderPareto(accts, grand){
+    var map={};
+    accts.forEach(function(a){ a.clients.forEach(function(c){ map[c.customer]=E.round2((map[c.customer]||0)+c.amount); }); });
+    var arr=Object.keys(map).map(function(k){ return {customer:k, amount:map[k]}; });
+    arr.sort(function(a,b){ return b.amount-a.amount; });
+    var total=arr.reduce(function(s,x){ return E.round2(s+x.amount); },0);
+    var sumEl=$('pareto-summary'), cont=$('pareto-container'), badge=$('pareto-badge');
+    if(!arr.length || total<=0){ sumEl.innerHTML=''; badge.textContent=''; cont.innerHTML='<table class="pareto"><tbody><tr><td class="empty">No collections to analyse.</td></tr></tbody></table>'; return; }
+
+    var cum=0, cutoffIdx=-1;
+    arr.forEach(function(x,i){ cum=E.round2(cum+x.amount); x.cum=cum; x.pct=x.amount/total; x.cumPct=cum/total; if(cutoffIdx<0 && x.cumPct>=0.8) cutoffIdx=i; });
+    if(cutoffIdx<0) cutoffIdx=arr.length-1;
+    var vitalCount=cutoffIdx+1, vitalPctClients=vitalCount/arr.length, vitalRev=arr[cutoffIdx].cum;
+    var top20count=Math.max(1,Math.ceil(arr.length*0.2));
+    var top20rev=arr.slice(0,top20count).reduce(function(s,x){ return E.round2(s+x.amount); },0);
+    var top20pct=top20rev/total;
+    var pctS=function(f){ return (f*100).toFixed(1)+'%'; };
+
+    var verdictCls=(vitalPctClients<=0.25)?'yes':'close', verdictTxt;
+    if(vitalPctClients<=0.22) verdictTxt='Yes — textbook Pareto. Your revenue is concentrated in a small “vital few”, so focusing on them is well founded.';
+    else if(vitalPctClients<=0.35) verdictTxt='Broadly yes — close to 80/20. Revenue is concentrated, though the “vital few” runs a little larger than 20% of clients.';
+    else verdictTxt='Not quite 80/20 — your revenue is more evenly spread across clients. Focus still helps, but no small group dominates the way the rule assumes.';
+
+    sumEl.innerHTML='<div class="pareto-callout">'
+      +'<div class="big">Your top <b>'+vitalCount+'</b> clients (<b>'+pctS(vitalPctClients)+'</b> of '+arr.length+') bring in <b>80%</b> of collections — '+fmt(vitalRev)+' of '+fmt(total)+'.</div>'
+      +'<div class="verdict '+verdictCls+'">'+esc(verdictTxt)+'</div>'
+      +'<ul>'
+      +'<li>Your top <b>20%</b> of clients ('+top20count+') actually bring in <b>'+pctS(top20pct)+'</b> of collections ('+fmt(top20rev)+').</li>'
+      +'<li>Largest single client: <b>'+esc(arr[0].customer)+'</b> — '+fmt(arr[0].amount)+' ('+pctS(arr[0].pct)+' of the total).</li>'
+      +'<li>The remaining <b>'+(arr.length-vitalCount)+'</b> clients ('+pctS(1-vitalPctClients)+') together make up the last 20%.</li>'
+      +'</ul></div>';
+
+    var maxAmt=arr[0].amount;
+    var rowsHtml=arr.map(function(x,i){
+      var vital=i<=cutoffIdx, w=Math.max(2,Math.round(x.amount/maxAmt*120));
+      return '<tr class="'+(vital?'vital':'')+(i===cutoffIdx?' cutoff':'')+'">'
+        +'<td class="rank">'+(i+1)+'</td><td>'+esc(x.customer)+'</td>'
+        +'<td class="num amt">'+fmt(x.amount)+'</td><td class="num">'+pctS(x.pct)+'</td><td class="num">'+pctS(x.cumPct)+'</td>'
+        +'<td><div class="pbar-wrap"><div class="pbar'+(vital?'':' dim')+'" style="width:'+w+'px"></div></div></td></tr>';
+    }).join('');
+    cont.innerHTML='<table class="pareto"><thead><tr><th class="num">#</th><th>Client</th><th class="num">Collected</th><th class="num">% of total</th><th class="num">Cumulative %</th><th>Share</th></tr></thead><tbody>'+rowsHtml+'</tbody></table>';
+    badge.textContent=arr.length+' clients · shaded rows + dashed line = the “vital few” up to 80%';
+    STATE.pareto={arr:arr, total:total, vitalCount:vitalCount, vitalPctClients:vitalPctClients, top20count:top20count, top20pct:top20pct};
+  }
+
+  function renderPaid(accts, grand, showAcct){
+    if(!accts.length) return '<table class="grid"><tbody><tr><td class="empty">No accounts selected.</td></tr></tbody></table>';
+    var rows='';
+    accts.forEach(function(a){
+      if(showAcct) rows+='<tr class="acct-row"><td colspan="4">'+esc(a.account||'(unnamed account)')+'</td></tr>';
+      var curClient=null, sub=0, subCount=0;
+      function flush(){ if(curClient!==null) rows+='<tr class="sub"><td colspan="3">Subtotal — '+esc(curClient)+' ('+subCount+')</td><td class="num amt">'+fmt(sub)+'</td></tr>'; }
+      a.paid.forEach(function(p){
+        if(p.customer!==curClient){ flush(); curClient=p.customer; sub=0; subCount=0;
+          rows+='<tr class="client-row"><td colspan="4">'+esc(p.customer)+'</td></tr>'; }
+        sub=E.round2(sub+p.amount); subCount++;
+        rows+='<tr><td></td><td>'+esc(p.invoice||'')+'</td><td class="mono">'+esc(p.invoiceDate||'')+'</td><td class="num amt">'+fmt(p.amount)+'</td></tr>';
+      });
+      flush();
+      if(showAcct) rows+='<tr class="acct-sub"><td colspan="3">Subtotal — '+esc(a.account||'(unnamed account)')+' · '+a.summary.invoicesWithCollections+' invoices · '+a.summary.clientsWithCollections+' clients</td><td class="num amt">'+fmt(a.summary.grossPositive)+'</td></tr>';
+    });
+    rows+='<tr class="grand"><td colspan="3">'+(showAcct?'GRAND TOTAL — GROSS COLLECTIONS':'GROSS COLLECTIONS')+'</td><td class="num amt">'+fmt(grand.grossPositive)+'</td></tr>';
+    return '<table class="grid"><thead><tr><th>Client / Invoice</th><th>Invoice #</th><th>Invoice date</th><th class="num">Amount</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  }
+
+  function renderAdj(accts, grand, showAcct){
+    var all=[]; accts.forEach(function(a){ all=all.concat(a.adjustments); });
+    if(!all.length) return { html:'<table class="grid"><tbody><tr><td colspan="4" class="empty">None.</td></tr></tbody></table>', count:0 };
+    var cols = showAcct ? ['Account','Client','Invoice #','Invoice date','Amount'] : ['Client','Invoice #','Invoice date','Amount'];
+    var head='<tr>'+cols.map(function(c,i){return '<th'+(i===cols.length-1?' class="num"':'')+'>'+c+'</th>';}).join('')+'</tr>';
+    var body='';
+    all.forEach(function(x){
+      body+='<tr>'+(showAcct?'<td>'+esc(x.account||'')+'</td>':'')
+        +'<td>'+esc(x.customer)+'</td><td>'+esc(x.invoice||'')+'</td><td class="mono">'+esc(x.invoiceDate||'')+'</td>'
+        +'<td class="num amt">'+fmt(x.amount)+'</td></tr>';
+    });
+    body+='<tr class="grand"><td colspan="'+(cols.length-1)+'">TOTAL ADJUSTMENTS</td><td class="num amt">'+fmt(grand.adjustments)+'</td></tr>';
+    return { html:'<table class="grid"><thead>'+head+'</thead><tbody>'+body+'</tbody></table>', count:all.length };
+  }
+
+  /* ======================= IMPORT (paste / CSV) ======================= */
+  function parseDelimited(text){
+    text = text.replace(/\r\n?/g,'\n').replace(/\n+$/,'');
+    if(!text.trim()) return [];
+    var delim = text.indexOf('\t')>-1 ? '\t' : ',';
+    var rows=[], row=[], f='', i=0, q=false;
+    while(i<text.length){
+      var c=text[i];
+      if(q){ if(c==='"'){ if(text[i+1]==='"'){f+='"';i+=2;continue;} q=false;i++;continue;} f+=c;i++;continue; }
+      if(c==='"'){q=true;i++;continue;}
+      if(c===delim){row.push(f);f='';i++;continue;}
+      if(c==='\n'){row.push(f);rows.push(row);row=[];f='';i++;continue;}
+      f+=c;i++;
+    }
+    row.push(f); rows.push(row);
+    return rows;
+  }
+  function findCol(header, names){
+    for(var i=0;i<header.length;i++){ var h=String(header[i]).toLowerCase().trim();
+      for(var j=0;j<names.length;j++) if(h.indexOf(names[j])>-1) return i; }
+    return -1;
+  }
+  function buildFromText(text){
+    var table = parseDelimited(text);
+    if(table.length<2) throw new Error('Could not read a header row plus at least one data row.');
+    var header = table[0];
+    var col = function(r,i){ return i>-1 ? r[i] : ''; };
+    var map = {
+      date: findCol(header,['date paid','date']),
+      transaction: findCol(header,['transaction','source document']),
+      invoice: findCol(header,['invoice']),
+      receipt: findCol(header,['receipt']),
+      customer: findCol(header,['client','customer','contact','name']),
+      description: findCol(header,['description','item']),
+      account: findCol(header,['income account','account']),
+      debit: findCol(header,['debit']),
+      credit: findCol(header,['credit']),
+      amount: findCol(header,['amount collected','amount received','collected','amount'])
+    };
+    var from=toDate($('imp-from').value), to=toDate($('imp-to').value);
+    var data = table.slice(1).filter(function(r){ return r.length>1; });
+    var rows, mode;
+
+    if(map.debit>-1 && map.credit>-1){
+      // ── Format A: GL account drill-down (Debit / Credit) ──
+      mode='drill-down (Credit − Debit)';
+      if(map.transaction<0) throw new Error('Drill-down format needs a Transaction column. Found: '+header.join(', '));
+      rows = data.map(function(r){ return {
+        date: col(r,map.date), transaction: col(r,map.transaction),
+        customer: col(r,map.customer), description: col(r,map.description),
+        account: col(r,map.account), debit: col(r,map.debit), credit: col(r,map.credit)
+      }; });
+    } else if(map.amount>-1){
+      // ── Format B: receipt-level income report ("Amount Collected") ──
+      mode='receipt-level (Amount Collected)';
+      rows = data.map(function(r){
+        var inv = col(r,map.invoice), dp = col(r,map.date);
+        var txn = map.transaction>-1 ? col(r,map.transaction) : ('Sales Invoice — ' + (inv||'?') + ' — ' + dp);
+        var amt = E.num(col(r,map.amount));
+        return {
+          date: dp, transaction: txn, customer: col(r,map.customer),
+          description: col(r,map.description), account: col(r,map.account),
+          credit: amt>=0 ? amt : '', debit: amt<0 ? -amt : ''
+        };
+      });
+    } else {
+      throw new Error('Unrecognised columns. Need either Debit + Credit, or an "Amount Collected" column. Found: '+header.join(', '));
+    }
+
+    rows = filterByDate(rows, from, to);
+    var desc = $('imp-desc').value.trim();
+    var report = E.transform(rows, desc? {descriptionFilter:desc} : {});
+    map.__mode = mode;
+    showDebugImport(map, rows.slice(0,3), header);
+    var label = ($('imp-period').value.trim()) || rangeLabel(from,to) || 'Imported detail';
+    afterTransform(report, { periodLabel: label }, '');
+  }
+  function filterByDate(rows, from, to){
+    if(!from && !to) return rows;
+    return rows.filter(function(r){
+      var d=toDate(r.date); if(!d) return true;   // keep undated boundary rows
+      if(from && d<from) return false;
+      if(to && d>to) return false;
+      return true;
+    });
+  }
+
+  $('btn-build').addEventListener('click',function(){ try{ msg(''); buildFromText($('paste').value); } catch(err){ msg(esc(err.message),'err'); } });
+  var drop=$('drop'), file=$('file');
+  drop.addEventListener('click',function(){file.click();});
+  drop.addEventListener('dragover',function(e){e.preventDefault();drop.classList.add('over');});
+  drop.addEventListener('dragleave',function(){drop.classList.remove('over');});
+  drop.addEventListener('drop',function(e){e.preventDefault();drop.classList.remove('over'); var f=e.dataTransfer.files[0]; if(f) readFile(f);});
+  file.addEventListener('change',function(){ if(file.files[0]) readFile(file.files[0]); });
+  function readFile(f){ var r=new FileReader(); r.onload=function(){ try{ msg(''); buildFromText(r.result); }catch(err){ msg(esc(err.message),'err'); } }; r.readAsText(f); }
+
+  function showDebugImport(map, sample, header){
+    var mode=map.__mode||'';
+    var rows = Object.keys(map).filter(function(k){ return k!=='__mode'; }).map(function(k){ var i=map[k];
+      return '<tr><td style="padding:2px 10px 2px 0;color:#64748b">'+k+'</td><td>'+(i>-1?('column '+(i+1)+' — <b>'+esc(header?header[i]:'')+'</b>'):'<i>not found</i>')+'</td></tr>'; }).join('');
+    $('dbg-map').innerHTML=(mode?'<div style="font-size:12px;margin:6px 0"><b>Detected format:</b> '+esc(mode)+'</div>':'')+'<table style="font-size:12px;margin:6px 0 10px">'+rows+'</table>';
+    $('dbg-raw').textContent=JSON.stringify(sample,null,2);
+  }
+
+  /* ======================= LIVE (Manager bridge) ======================= */
+  var MANAGER_ORIGIN=null;
+  function bridge(path){
+    return new Promise(function(resolve,reject){
+      var rid=(crypto.randomUUID?crypto.randomUUID():String(Math.random()));
+      var timer=setTimeout(function(){ window.removeEventListener('message',h); reject(new Error('Timed out — is this running inside Manager.io?')); },20000);
+      function h(e){
+        if(MANAGER_ORIGIN && e.origin!==MANAGER_ORIGIN) return;
+        if(e.source!==window.parent) return;
+        if(e.data && typeof e.data.type==='string' && e.data.type.slice(-9)==='-response' && e.data.requestId===rid){
+          clearTimeout(timer); window.removeEventListener('message',h);
+          if(!MANAGER_ORIGIN && e.origin) MANAGER_ORIGIN=e.origin;
+          resolve(e.data.body);
+        }
+      }
+      window.addEventListener('message',h);
+      window.parent.postMessage({type:'api-request',method:'GET',path:path,requestId:rid},'*');
+    });
+  }
+  function itemsOf(d){ if(Array.isArray(d)) return d; if(d&&typeof d==='object'){ if(Array.isArray(d.items))return d.items; if(Array.isArray(d.data))return d.data; for(var k in d) if(Array.isArray(d[k])) return d[k]; } return []; }
+  // api4 wraps every record as { key, item, _links, _actions }; the real data is in `item`.
+  function unwrap(row){ return (row && typeof row==='object' && !Array.isArray(row) && ('item' in row)) ? (row.item||{}) : row; }
+  function rowKey(row){ return (row && typeof row==='object') ? String(row.key||row.Key||'') : ''; }
+  function nextToken(d){ return d && (d.next_page_token||d.nextPageToken) || null; }
+  async function fetchAll(endpoint, onPage){
+    var out=[], token=null, guard=0;
+    do{ var path='/api4/'+endpoint+'?PageSize=100000'+(token?('&next_page_token='+encodeURIComponent(token)):'');
+      var body=await bridge(path); out=out.concat(itemsOf(body)); token=nextToken(body); guard++;
+      if(onPage) onPage(out.length);
+    } while(token && guard<500);
+    return out;
+  }
+  function setConn(state,txt){ var c=$('conn'); c.className='conn '+(state||''); $('conn-txt').textContent=txt; }
+  function pick(obj,names){
+    for(var i=0;i<names.length;i++){ for(var k in obj){ if(k.toLowerCase()===names[i]) return obj[k]; } }
+    for(var j=0;j<names.length;j++){ for(var k2 in obj){ if(k2.toLowerCase().indexOf(names[j])>-1) return obj[k2]; } }
+    return undefined;
+  }
+  function asText(v){
+    if(v==null) return '';
+    if(typeof v==='object'){
+      var ref=v.Reference||v.reference||v.Number||v.number||v.Code||v.code;
+      var name=v.Name||v.name||v.Description||v.description;
+      var type=v.Type||v.type||'';
+      if(ref) return (String(type).replace(/([a-z])([A-Z])/g,'$1 $2')||'Sales Invoice')+' — '+ref+' — '+(v.Date||v.date||'');
+      if(name) return name;
+      return JSON.stringify(v);
+    }
+    return String(v);
+  }
+
+  /* ---- P&L account selector ---- */
+  var PL_ACCOUNTS=[];      // [{key,name,checked}]
+  var ACCT_BY_KEY={};      // key -> name
+  var ACCT_SOURCE='';
+
+  async function fetchAccounts(){
+    var eps=['profit-and-loss-statement-account-batch','general-ledger-account-batch','chart-of-account-batch','account-batch'];
+    for(var i=0;i<eps.length;i++){
+      try{
+        var list=await fetchAll(eps[i]);
+        if(list && list.length){
+          var accts=[];
+          for(var j=0;j<list.length;j++){
+            var a=list[j], it=unwrap(a);
+            var ekey=rowKey(a), ikey=String(pick(it,['key'])||'');
+            var name=asText(pick(it,['name']));
+            var alt=[]; if(ekey) alt.push(ekey); if(ikey&&ikey!==ekey) alt.push(ikey);
+            if(name) accts.push({key:ekey||ikey, altKeys:alt, name:name});
+          }
+          if(accts.length){ ACCT_SOURCE=eps[i]; return accts; }
+        }
+      }catch(e){}
+    }
+    // fallback: derive distinct accounts from the GL itself (date-range scoped)
+    try{
+      var from=toDate($('live-from').value), to=toDate($('live-to').value);
+      var gl=await fetchAll('general-ledger-transactions-batch');
+      var seen={}, out=[];
+      for(var k=0;k<gl.length;k++){
+        var g=gl[k], it=unwrap(g);
+        var dRaw=pick(it,['date','transactiondate','postingdate']); var d=dRaw?toDate(dRaw):null;
+        if(d){ if(from&&d<from) continue; if(to&&d>to) continue; }
+        var raw=pick(it,['account']); var key='',name='';
+        if(raw && typeof raw==='object'){ key=String(raw.key||raw.Key||raw.id||''); name=asText(raw); }
+        else { name=String(raw==null?'':raw); key=name; }
+        var id=key||name; if(!id||seen[id]) continue; seen[id]=1; out.push({key:key,name:name||key});
+      }
+      if(out.length){ ACCT_SOURCE='(derived from general-ledger-transactions-batch)'; return out; }
+    }catch(e){}
+    return [];
+  }
+
+  async function loadAccounts(){
+    if(window.self===window.top){ msg('Open this inside Manager.io to load accounts. In a plain browser, use “Paste / import detail”.','warn'); return; }
+    var box=$('pl-accounts'); box.innerHTML='<div class="pl-empty">Loading accounts…</div>'; setConn('busy','Loading accounts…');
+    try{
+      var accts=await fetchAccounts();
+      accts.sort(function(a,b){ return a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
+      PL_ACCOUNTS=accts.map(function(a){ return {key:a.key, altKeys:a.altKeys||[a.key], name:a.name, checked:false}; });
+      ACCT_BY_KEY={}; PL_ACCOUNTS.forEach(function(a){ (a.altKeys||[a.key]).forEach(function(k){ if(k) ACCT_BY_KEY[k]=a.name; }); });
+      setConn('ok','Connected');
+      if(!PL_ACCOUNTS.length){
+        box.innerHTML='<div class="pl-empty">No accounts returned by the API — running diagnostics…</div>';
+        runDiagnostics();   // auto-probe so we can see the real endpoint/field names
+        return;
+      }
+      renderAccountList('');
+      var n=tickByText('retainer');
+      msg('Loaded '+PL_ACCOUNTS.length+' accounts from <code>'+esc(ACCT_SOURCE)+'</code>'+(n?(' · pre-ticked '+n+' “Retainer” account'+(n>1?'s':'')):'')+'. Set the dates and click “Load report”.','info');
+    }catch(err){ setConn('err','Error'); box.innerHTML='<div class="pl-empty">Could not load accounts: '+esc(err.message)+'</div>'; }
+  }
+
+  /* ---- diagnostics: probe endpoints and dump raw shapes so mapping can be fixed ---- */
+  async function probeEndpoints(){
+    var eps=['profit-and-loss-statement-account-batch','receipt-batch','sales-invoice-batch',
+             'credit-note-batch','customer-batch','tax-code-batch'];
+    var out=[];
+    for(var i=0;i<eps.length;i++){
+      var ep=eps[i], entry={endpoint:ep};
+      try{
+        var resp=await bridge('/api4/'+ep+'?PageSize=3');
+        var items=itemsOf(resp);
+        entry.ok=true;
+        entry.topKeys = (resp&&typeof resp==='object'&&!Array.isArray(resp))?Object.keys(resp):(Array.isArray(resp)?['<array>']:[typeof resp]);
+        entry.itemCount=items.length;
+        entry.envelopeKeys=(items.length&&items[0]&&typeof items[0]==='object')?Object.keys(items[0]):null;
+        var it0=items.length?unwrap(items[0]):null;
+        entry.itemKeys=it0?Object.keys(it0):null;   // real fields, unwrapped
+        if(it0){ entry.arrays={}; Object.keys(it0).forEach(function(k){ if(Array.isArray(it0[k])){ entry.arrays[k]={len:it0[k].length, keys:(it0[k][0]&&typeof it0[k][0]==='object')?Object.keys(it0[k][0]):typeof it0[k][0]}; } }); }
+        entry.sample=it0||resp;
+      }catch(e){ entry.ok=false; entry.error=String((e&&e.message)||e); }
+      out.push(entry);
+    }
+    return out;
+  }
+  /* Can we read the RENDERED rows of a saved report/account by key?
+     The -batch endpoints are saved definitions; the rows must come from a keyed read. */
+  function summarizeResp(b){
+    b = unwrap(b);
+    if(b==null) return {type:'null'};
+    if(typeof b!=='object') return {type:typeof b, value:String(b).slice(0,120)};
+    var keys=Object.keys(b), arrays={};
+    keys.forEach(function(k){ if(Array.isArray(b[k])){ arrays[k]={len:b[k].length, firstKeys:(b[k][0]&&typeof b[k][0]==='object')?Object.keys(unwrap(b[k][0])):typeof b[k][0]}; } });
+    return {keys:keys, arrays:arrays};
+  }
+  async function deepProbe(){
+    var out={};
+    // 1) saved GL Transactions reports — capture keys + _links/_actions hrefs
+    try{
+      var listBody=await bridge('/api4/general-ledger-transactions-batch?PageSize=5');
+      var items=itemsOf(listBody);
+      out.savedGLReports=items.map(function(r){ var it=unwrap(r);
+        return { key:rowKey(r), description:it.description, fromDate:it.fromDate, toDate:it.toDate, account:it.account,
+                 _links:r._links, _actions:r._actions }; });
+      // 2) try to READ the first saved report by key (several path styles)
+      if(items.length){
+        var k=rowKey(items[0]);
+        var tries=[ '/api4/general-ledger-transactions?Key='+encodeURIComponent(k),
+                    '/api4/general-ledger-transactions/'+encodeURIComponent(k),
+                    '/api4/general-ledger-transactions-read?Key='+encodeURIComponent(k) ];
+        // also follow any _links hrefs on the envelope
+        var lk=items[0]._links; if(lk&&typeof lk==='object'){ for(var ln in lk){ var h=lk[ln]&&(lk[ln].href||lk[ln]); if(typeof h==='string') tries.push(h); } }
+        out.readByKey=[];
+        for(var t=0;t<tries.length;t++){
+          var path=tries[t];
+          try{ var b=await bridge(path); out.readByKey.push({path:path, summary:summarizeResp(b), sample: b}); }
+          catch(e){ out.readByKey.push({path:path, error:String((e&&e.message)||e)}); }
+        }
+      }
+    }catch(e){ out.error=String((e&&e.message)||e); }
+    return out;
+  }
+
+  // Pull one real line from a receipt / invoice / credit-note so we can see the
+  // exact line fields (account, invoice ref, amount, tax) needed for the engine.
+  async function probeLineShapes(){
+    var out={}; var want=['receipt-batch','sales-invoice-batch','credit-note-batch'];
+    for(var w=0;w<want.length;w++){
+      try{
+        var items=itemsOf(await bridge('/api4/'+want[w]+'?PageSize=15'));
+        var found=null;
+        for(var i=0;i<items.length;i++){ var it=unwrap(items[i]); var L=it.lines||it.Lines; if(Array.isArray(L)&&L.length){ found={item:it,line:L[0]}; break; } }
+        if(!found && items.length) found={item:unwrap(items[0]),line:null};
+        out[want[w]]=found;
+      }catch(e){ out[want[w]]={error:String((e&&e.message)||e)}; }
+    }
+    return out;
+  }
+  function fieldDump(obj, keysWanted){
+    if(!obj) return '(none)';
+    var keys = keysWanted || Object.keys(obj);
+    return keys.map(function(k){ if(!(k in obj)) return null; var v=obj[k]; var t;
+      if(v===null) t='null'; else if(Array.isArray(v)) t='array['+v.length+']';
+      else if(typeof v==='object') t='{'+Object.keys(v).slice(0,10).join(', ')+'}';
+      else t=String(v);
+      if(t.length>56) t=t.slice(0,56)+'…'; return '  '+k+' = '+t;
+    }).filter(Boolean).join('\n');
+  }
+
+  async function runDiagnostics(){
+    if(window.self===window.top){ msg('Open inside Manager.io to run diagnostics.','warn'); return; }
+    setConn('busy','Probing endpoints…'); msg('Probing Manager API endpoints…','info');
+    try{
+      var rep=await probeEndpoints();
+      var shapes=await probeLineShapes();
+      var html=rep.map(function(e){
+        return '<div style="margin:4px 0;padding:4px 0;border-bottom:1px solid #eee"><b>'+esc(e.endpoint)+'</b> — '
+          +(e.ok?('items=<b>'+e.itemCount+'</b>'
+                 +(e.itemKeys?('<br><span style="color:#0e7490">item fields=['+esc(e.itemKeys.join(', '))+']</span>'):'')
+                 +(e.arrays&&Object.keys(e.arrays).length?('<br><span style="color:#047857">lines/arrays: '+esc(Object.keys(e.arrays).map(function(a){var A=e.arrays[a];return a+'['+A.len+'] → {'+(Array.isArray(A.keys)?A.keys.join(', '):A.keys)+'}';}).join('  ;  '))+'</span>'):''))
+                :('<span style="color:#b91c1c">error: '+esc(e.error)+'</span>'))+'</div>';
+      }).join('');
+      // readable line shapes (the decisive part for the engine)
+      var rc=shapes['receipt-batch']||{}, inv=shapes['sales-invoice-batch']||{}, cn=shapes['credit-note-batch']||{};
+      var invTax=['amountsIncludeTax','withholdingTax','withholdingTaxType','withholdingTaxPercentage','exchangeRate'];
+      var dhtml='<div style="margin-top:12px;font-weight:700;color:#b45309">RECORD LINE SHAPES (for the cash-basis engine)</div>'
+        +'<pre style="white-space:pre-wrap;font-size:11px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px;margin-top:6px">'
+        +'RECEIPT — line fields:\n'+esc(rc.error?('error: '+rc.error):fieldDump(rc.line))
+        +'\n\nSALES INVOICE — line fields:\n'+esc(inv.error?('error: '+inv.error):fieldDump(inv.line))
+        +'\n\nSALES INVOICE — tax/header fields:\n'+esc(inv.item?fieldDump(inv.item, invTax):'(none)')
+        +'\n\nCREDIT NOTE — line fields:\n'+esc(cn.error?('error: '+cn.error):fieldDump(cn.line))
+        +'</pre>';
+      $('dbg-map').innerHTML='<div style="font-size:12px">'+html+dhtml+'</div>';
+      $('dbg-raw').textContent=JSON.stringify({endpoints:rep, lineShapes:shapes},null,2);
+      var d=document.querySelector('details.dbg'); if(d) d.open=true;
+      $('report').style.display='block';
+      setConn('ok','Connected');
+      msg('Diagnostics ready. Send me the <b>“RECORD LINE SHAPES”</b> block (the grey box) — that has the receipt/invoice line fields I need to build the engine.','info');
+    }catch(err){ setConn('err','Error'); msg('Diagnostics failed: '+esc(err.message),'err'); }
+  }
+  $('acct-diag').addEventListener('click',runDiagnostics);
+  function renderAccountList(filter){
+    var box=$('pl-accounts'); var f=(filter||'').toLowerCase();
+    var items=PL_ACCOUNTS.map(function(a,i){ return {a:a,i:i}; }).filter(function(o){ return !f || o.a.name.toLowerCase().indexOf(f)>-1; });
+    if(!items.length){ box.innerHTML='<div class="pl-empty">No accounts match “'+esc(filter)+'”.</div>'; return; }
+    box.innerHTML=items.map(function(o){
+      return '<label class="pl-item"><input type="checkbox" data-i="'+o.i+'"'+(o.a.checked?' checked':'')+'>'+esc(o.a.name)+'</label>';
+    }).join('');
+    box.querySelectorAll('input').forEach(function(cb){ cb.addEventListener('change',function(){ PL_ACCOUNTS[+cb.dataset.i].checked=cb.checked; }); });
+  }
+  function tickByText(t){
+    t=(t||'').toLowerCase().trim(); var n=0;
+    if(t) PL_ACCOUNTS.forEach(function(a){ if(a.name.toLowerCase().indexOf(t)>-1){ a.checked=true; n++; } });
+    renderAccountList($('acct-search').value);
+    return n;
+  }
+  function selectedPL(){ return PL_ACCOUNTS.filter(function(a){ return a.checked; }); }
+
+  $('acct-load').addEventListener('click',loadAccounts);
+  $('acct-tick-ret').addEventListener('click',function(){ if(!PL_ACCOUNTS.length){ loadAccounts(); return; } var n=tickByText('retainer'); if(!n) msg('No account name contains “Retainer”. Tick the account(s) manually.','warn'); });
+  $('acct-clear').addEventListener('click',function(){ PL_ACCOUNTS.forEach(function(a){a.checked=false;}); renderAccountList($('acct-search').value); });
+  $('acct-search').addEventListener('input',function(){ renderAccountList($('acct-search').value); });
+
+  /* ================= RECORDS-BASED CASH BASIS (live) ================= */
+  var CB = window.RetainerCashBasis;
+  function keyOf(v){ if(v==null) return ''; if(typeof v==='object') return String(v.key||v.Key||v.id||''); return String(v); }
+  function n(v){ return E.num(v); }
+
+  function normReceipt(r){
+    var it=unwrap(r);
+    var date=pick(it,['date']);
+    var custHeader=keyOf(pick(it,['customer']));
+    var lines=it.lines||it.Lines||[];
+    var allocations=[], directs=[], unallocated=0;
+    for(var i=0;i<lines.length;i++){
+      var l=lines[i]; var amt=n(l.amount);
+      var invK=keyOf(l.accountsReceivableSalesInvoice);
+      var custK=keyOf(l.accountsReceivableCustomer)||custHeader;
+      if(invK){ allocations.push({invoice:invK, amount:amt, customerKey:custK}); }
+      else if(keyOf(l.accountsReceivableCustomer)){ unallocated++; }   // paid to customer, no invoice
+      else { var ak=keyOf(l.account); if(ak) directs.push({account:ak, customerKey:custK, amount:amt}); }
+    }
+    return {key:rowKey(r), date:date, customerKey:custHeader, allocations:allocations, directs:directs, unallocated:unallocated};
+  }
+  function normInvoice(rec){
+    var it=unwrap(rec);
+    var lines=(it.lines||it.Lines||[]).map(function(l){
+      var qty=(l.qty==null||l.qty==='')?1:n(l.qty);
+      var gross=qty*n(l.salesUnitPrice);
+      var dp=n(l.discountPercentage), da=n(l.discountAmount);
+      if(dp) gross=gross*(1-dp/100);
+      if(da) gross=gross-da;
+      return {account:keyOf(l.account), amount:E.round2(gross), tax:0};
+    });
+    return {customerKey:keyOf(it.customer), reference:pick(it,['reference'])||'', date:pick(it,['issuedate','date'])||'', lines:lines};
+  }
+  // The single-record ?Key= endpoint returns no line items, so scan the batch
+  // (which DOES include lines) and keep only the invoices we need, stopping
+  // early once all are found. Indexes by both envelope key and item key.
+  async function fetchInvoicesFiltered(neededSet, onProgress){
+    var need=Object.keys(neededSet).length, byKey={}, found=0, sampleKeys=[];
+    // Full scan (same paging as receipts, which fetched 11,911 fine). No early-exit.
+    var all=await fetchAll('sales-invoice-batch', function(nn){ if(onProgress) onProgress(nn, found, need); });
+    for(var i=0;i<all.length;i++){
+      var ek=rowKey(all[i]); var it=unwrap(all[i]); var ik=String(pick(it,['key'])||'');
+      if(sampleKeys.length<6) sampleKeys.push({ek:ek, ik:ik, ref:pick(it,['reference'])});
+      if(neededSet[ek]||neededSet[ik]){ var norm=normInvoice(all[i]); if(!byKey[ek]){ byKey[ek]=norm; found++; } if(ik) byKey[ik]=norm; }
+    }
+    return { byKey:byKey, scanned:all.length, found:found, sampleKeys:sampleKeys };
+  }
+
+  async function loadLiveRecords(){
+    if(window.self===window.top){
+      msg('Live mode only works inside Manager.io. In a browser use “Paste / import detail”.','warn'); setConn('err','Not in Manager'); return;
+    }
+    var sel=selectedPL();
+    if(!sel.length){ msg('Pick at least one P&L account first (click “↻ Load”, then tick your retainer account).','warn'); return; }
+    var from=toDate($('live-from').value), to=toDate($('live-to').value);
+    if(!from||!to){ msg('Set a valid From and To date.','warn'); return; }
+    var selSet={}; sel.forEach(function(a){ (a.altKeys||[a.key]).forEach(function(k){ if(k) selSet[k]=1; }); });
+    var selHas={ has:function(k){ return !!selSet[k]; } };
+    var acctName={}; PL_ACCOUNTS.forEach(function(a){ (a.altKeys||[a.key]).forEach(function(k){ if(k) acctName[k]=a.name; }); });
+
+    $('report').style.display='none';
+    setConn('busy','Loading…');
+    var t0=Date.now();
+    try{
+      // 1) receipts in range
+      msg('Fetching receipts…','info');
+      var receiptsRaw=await fetchAll('receipt-batch', function(nn){ setConn('busy','Receipts: '+nn+'…'); });
+      var receipts=[];
+      for(var i=0;i<receiptsRaw.length;i++){
+        var nr=normReceipt(receiptsRaw[i]);
+        var d=nr.date?toDate(nr.date):null;
+        if(d){ if(d<from||d>to) continue; }
+        receipts.push(nr);
+      }
+      // 2) referenced invoices
+      var keySet={}; receipts.forEach(function(r){ r.allocations.forEach(function(a){ if(a.invoice) keySet[a.invoice]=1; }); });
+      var keys=Object.keys(keySet);
+      var neededSet={}; keys.forEach(function(k){ neededSet[k]=1; });
+      msg('Scanning invoices for the '+keys.length+' paid in the period…','info');
+      var invRes=await fetchInvoicesFiltered(neededSet, function(scanned,found,need){ setConn('busy','Invoices scanned: '+scanned); });
+      var invoicesByKey=invRes.byKey;
+      // 3) customer names
+      setConn('busy','Customers…');
+      var custName={};
+      try{ var custRaw=await fetchAll('customer-batch');
+        custRaw.forEach(function(c){ var it=unwrap(c); var nm=pick(it,['namewithcode'])||pick(it,['name']); if(nm) custName[rowKey(c)]=asText(nm); });
+      }catch(e){}
+      // account-key overlap check (does the invoice line account match the P&L account key?)
+      var invAcctKeys={}, invWithLines=0;
+      Object.keys(invoicesByKey).forEach(function(k){ var L=invoicesByKey[k].lines||[]; if(L.length) invWithLines++; L.forEach(function(l){ if(l.account) invAcctKeys[l.account]=(invAcctKeys[l.account]||0)+1; }); });
+      var selKeysArr=Object.keys(selSet);
+      var overlap=selKeysArr.filter(function(k){ return invAcctKeys[k]; });
+
+      // 4) compute
+      var res=CB.compute(receipts, invoicesByKey, {accounts:selHas});
+      var ledger=CB.toLedgerRows(res.rows, {account:acctName, customer:custName});
+      var report=E.transform(ledger);
+
+      var secs=((Date.now()-t0)/1000).toFixed(1);
+      var unresolved=res.stats.unknownInvoices.length;
+      var unalloc=receipts.reduce(function(s,r){return s+(r.unallocated||0);},0);
+      $('dbg-map').innerHTML='<div style="font-size:12px">'
+        +'Receipts fetched: <b>'+receiptsRaw.length+'</b> · in period: <b>'+receipts.length+'</b><br>'
+        +'Invoices needed: <b>'+keys.length+'</b> · scanned: <b>'+invRes.scanned+'</b> · resolved: <b>'+invRes.found+'</b> (with lines: '+invWithLines+') · payments matched: <b>'+res.stats.matchedPayments+'</b><br>'
+        +'Selected account keys: <b>'+selKeysArr.length+'</b> · distinct account keys on invoice lines: <b>'+Object.keys(invAcctKeys).length+'</b> · <b style="color:'+(overlap.length?'#047857':'#b91c1c')+'">key overlap: '+overlap.length+'</b><br>'
+        +'Unresolved invoice refs: <b>'+unresolved+'</b> · receipt lines with no specific invoice: <b>'+unalloc+'</b> · direct-to-income lines: <b>'+res.stats.directs+'</b> · elapsed '+secs+'s'
+        +(!overlap.length?'<br><span style="color:#b91c1c">⚠ No overlap between your P&L account keys and the account keys on invoice lines — that’s why the total is 0. The raw box shows both sets so I can fix the mapping.</span>':'')
+        +(unalloc?'<br><span style="color:#b45309">Note: '+unalloc+' receipt line(s) were auto-allocated to a customer with no invoice ref — excluded (can’t attribute to an account).</span>':'')
+        +'</div>';
+      $('dbg-raw').textContent=JSON.stringify({
+        selectedAccountKeys:selKeysArr,
+        topInvoiceLineAccountKeys:Object.keys(invAcctKeys).slice(0,25),
+        invoicesScanned:invRes.scanned, invoicesResolved:invRes.found,
+        unresolvedInvoiceRefsSample:res.stats.unknownInvoices.slice(0,6),
+        batchInvoiceKeySample:invRes.sampleKeys,
+        stats:res.stats,
+        sampleRows:res.rows.slice(0,5),
+        sampleReceipt:receiptsRaw.length?normReceipt(receiptsRaw[0]):null,
+        sampleInvoice:keys.length?invoicesByKey[keys[0]]:null
+      },null,2);
+
+      setConn('ok','Connected');
+      afterTransform(report, { periodLabel: rangeLabel(from,to) }, '');
+      if(!res.rows.length){ $('report').style.display='block'; var d=document.querySelector('details.dbg'); if(d) d.open=true;
+        msg('Computed ₱0 across '+keys.length+' invoices — open the <b>Data inspector</b>. If “key overlap” is 0, it’s an account-id mapping issue I can fix; if “no specific invoice” is high, it’s auto-allocated receipts.','warn'); }
+    }catch(err){ setConn('err','Error'); msg('Live compute failed: '+esc(err.message)+' — you can always use “Paste / import detail”.','err'); }
+  }
+
+  async function loadLive(){
+    if(window.self===window.top){
+      msg('Live mode only works when this page is opened inside Manager.io (Settings → Extensions). Use the “Paste / import detail” tab here in the browser.','warn');
+      setConn('err','Not in Manager'); return;
+    }
+    setConn('busy','Loading…'); msg('Contacting Manager.io…','info');
+    try{
+      var from=toDate($('live-from').value), to=toDate($('live-to').value);
+      var descFilter=$('live-desc').value.trim();
+
+      var sel=selectedPL();
+      if(!sel.length) throw new Error('Pick at least one P&L account: click “↻ Load” next to “Profit & Loss accounts”, then tick your retainer account(s).');
+      var selKeys={}, selNames={};
+      sel.forEach(function(a){ if(a.key) selKeys[a.key]=1; selNames[a.name.toLowerCase()]=1; });
+
+      var gl=await fetchAll('general-ledger-transactions-batch');
+      if(!gl.length) throw new Error('The General Ledger returned no rows for this business.');
+
+      var rows=[], sample=[], accountValsSeen={};
+      for(var i=0;i<gl.length;i++){
+        var g=gl[i], it=unwrap(g);
+        var dRaw=pick(it,['date','transactiondate','postingdate']);
+        var d=dRaw?toDate(dRaw):null;
+        if(d){ if(from&&d<from) continue; if(to&&d>to) continue; }
+        // resolve the row's account to a key + display name
+        var raw=pick(it,['account']); var akey='', aname='';
+        if(raw && typeof raw==='object'){ akey=String(raw.key||raw.Key||raw.id||''); aname=asText(raw); if(!aname && ACCT_BY_KEY[akey]) aname=ACCT_BY_KEY[akey]; }
+        else { var s=String(raw==null?'':raw); if(ACCT_BY_KEY[s]){ akey=s; aname=ACCT_BY_KEY[s]; } else { aname=s; akey=s; } }
+        if(sample.length<3) sample.push(it);
+        var av=akey||aname; if(av && !accountValsSeen[av]) accountValsSeen[av]=aname||akey;
+        var match = (akey && selKeys[akey]) || (aname && selNames[aname.toLowerCase()]);
+        if(!match) continue;
+        rows.push({
+          date:dRaw||'', account:aname||akey,
+          transaction:asText(pick(it,['transaction','reference','sourcedocument','document','invoice'])),
+          customer:asText(pick(it,['customer','contact','client','payer','payee'])),
+          description:asText(pick(it,['description','narration','linedescription'])),
+          debit:pick(it,['debit']), credit:pick(it,['credit'])
+        });
+      }
+      showDebugLive(gl, rows, sample, accountValsSeen);
+      if(!rows.length) throw new Error('No GL rows matched the selected account(s) in '+rangeLabel(from,to)+'. Check the date range, or the account mapping in the Data inspector below.');
+
+      var report=E.transform(rows, descFilter?{descriptionFilter:descFilter}:{});
+      setConn('ok','Connected');
+      afterTransform(report, { periodLabel: rangeLabel(from,to) }, '');
+    }catch(err){
+      setConn('err','Error');
+      msg(esc(err.message)+' <br><span style="color:#64748b">If live mode can’t reach the cash-basis ledger on your build, use “Paste / import detail” — same report, fully reconciled.</span>','err');
+    }
+  }
+  function showDebugLive(gl, rows, sample, accountVals){
+    var keys=gl.length?Object.keys(gl[0]):[];
+    var accts = accountVals? Object.keys(accountVals).map(function(k){ return accountVals[k]||k; }) : [];
+    $('dbg-map').innerHTML='<div style="font-size:12px;margin:6px 0">'
+      +'Accounts list source: <code>'+esc(ACCT_SOURCE||'(not loaded)')+'</code> · '+PL_ACCOUNTS.length+' P&amp;L accounts loaded.<br>'
+      +'Fetched <b>'+gl.length+'</b> GL rows · matched <b>'+rows.length+'</b> after date + account selection.<br>'
+      +'Detected keys on a GL record: <code style="font-size:11px">'+esc(keys.join(', '))+'</code><br>'
+      +'Distinct account values seen in GL ('+accts.length+'): <code style="font-size:11px">'+esc(accts.slice(0,40).join('  |  '))+'</code>'
+      +'</div>';
+    $('dbg-raw').textContent=JSON.stringify(sample,null,2);
+  }
+  $('btn-load').addEventListener('click',loadLiveRecords);
+
+  function runProbe(){
+    if(window.self===window.top){ setConn('err','Standalone (import only)'); return; }
+    setConn('busy','Checking…');
+    bridge('/api4/businesses?PageSize=1').then(function(){ setConn('ok','Connected'); loadAccounts(); }).catch(function(){ setConn('err','No response'); });
+  }
+  // Discreet reveal for the experimental live mode (kept for R&D; does not tie to the P&L).
+  var revealLink=$('reveal-live');
+  if(revealLink) revealLink.addEventListener('click',function(e){ e.preventDefault();
+    $('tab-live').style.display=''; $('conn').style.display='';
+    document.querySelector('.tab[data-tab="live"]').click();
+    runProbe(); revealLink.style.display='none';
+  });
+
+  /* ======================= EXPORT ======================= */
+  $('btn-print').addEventListener('click',function(){ window.print(); });
+  $('btn-csv').addEventListener('click',function(){
+    var accts=STATE.selected, grand=STATE.grand, m=STATE.meta; if(!accts||!accts.length) return;
+    var showAcct=accts.length>1;
+    function q(v){ v=String(v==null?'':v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
+    var L=[];
+    L.push([ 'Retainer Collections — '+(m.periodLabel||'') ].map(q).join(','));
+    L.push([ $('firm').textContent,'Cash basis' ].map(q).join(','));
+    L.push('');
+    L.push([ 'Account','Name of client','Invoice #','Invoice date','Amount' ].map(q).join(','));
+    accts.forEach(function(a){
+      a.paid.forEach(function(p){ L.push([ a.account,p.customer,p.invoice,p.invoiceDate,p.amount ].map(q).join(',')); });
+      if(showAcct) L.push([ 'Subtotal — '+a.account,'','','',a.summary.grossPositive ].map(q).join(','));
+    });
+    L.push([ 'GRAND TOTAL — GROSS COLLECTIONS','','','',grand.grossPositive ].map(q).join(','));
+    var anyAdj=accts.some(function(a){return a.adjustments.length;});
+    if(anyAdj){
+      L.push(''); L.push([ 'ADJUSTMENTS / REVERSALS' ].map(q).join(','));
+      L.push([ 'Account','Name of client','Invoice #','Invoice date','Amount' ].map(q).join(','));
+      accts.forEach(function(a){ a.adjustments.forEach(function(x){ L.push([ a.account,x.customer,x.invoice,x.invoiceDate,x.amount ].map(q).join(',')); }); });
+      L.push([ 'Total adjustments','','','',grand.adjustments ].map(q).join(','));
+    }
+    L.push(''); L.push([ 'Net cash-basis retainer income','','','',grand.net ].map(q).join(','));
+    var blob=new Blob(['﻿'+L.join('\n')],{type:'text/csv;charset=utf-8'});
+    var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download='retainer_collections_'+(m.periodLabel||'report').replace(/[^a-z0-9]+/gi,'_').toLowerCase().replace(/^_|_$/g,'')+'.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  });
+
+})();
+</script>
+</body>
+</html>
