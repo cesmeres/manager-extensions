@@ -612,23 +612,74 @@ if (typeof window.RetainerEngine === 'undefined') {
     }
     return out;
   }
+  /* Can we read the RENDERED rows of a saved report/account by key?
+     The -batch endpoints are saved definitions; the rows must come from a keyed read. */
+  function summarizeResp(b){
+    b = unwrap(b);
+    if(b==null) return {type:'null'};
+    if(typeof b!=='object') return {type:typeof b, value:String(b).slice(0,120)};
+    var keys=Object.keys(b), arrays={};
+    keys.forEach(function(k){ if(Array.isArray(b[k])){ arrays[k]={len:b[k].length, firstKeys:(b[k][0]&&typeof b[k][0]==='object')?Object.keys(unwrap(b[k][0])):typeof b[k][0]}; } });
+    return {keys:keys, arrays:arrays};
+  }
+  async function deepProbe(){
+    var out={};
+    // 1) saved GL Transactions reports — capture keys + _links/_actions hrefs
+    try{
+      var listBody=await bridge('/api4/general-ledger-transactions-batch?PageSize=5');
+      var items=itemsOf(listBody);
+      out.savedGLReports=items.map(function(r){ var it=unwrap(r);
+        return { key:rowKey(r), description:it.description, fromDate:it.fromDate, toDate:it.toDate, account:it.account,
+                 _links:r._links, _actions:r._actions }; });
+      // 2) try to READ the first saved report by key (several path styles)
+      if(items.length){
+        var k=rowKey(items[0]);
+        var tries=[ '/api4/general-ledger-transactions?Key='+encodeURIComponent(k),
+                    '/api4/general-ledger-transactions/'+encodeURIComponent(k),
+                    '/api4/general-ledger-transactions-read?Key='+encodeURIComponent(k) ];
+        // also follow any _links hrefs on the envelope
+        var lk=items[0]._links; if(lk&&typeof lk==='object'){ for(var ln in lk){ var h=lk[ln]&&(lk[ln].href||lk[ln]); if(typeof h==='string') tries.push(h); } }
+        out.readByKey=[];
+        for(var t=0;t<tries.length;t++){
+          var path=tries[t];
+          try{ var b=await bridge(path); out.readByKey.push({path:path, summary:summarizeResp(b), sample: b}); }
+          catch(e){ out.readByKey.push({path:path, error:String((e&&e.message)||e)}); }
+        }
+      }
+    }catch(e){ out.error=String((e&&e.message)||e); }
+    return out;
+  }
+
   async function runDiagnostics(){
     if(window.self===window.top){ msg('Open inside Manager.io to run diagnostics.','warn'); return; }
     setConn('busy','Probing endpoints…'); msg('Probing Manager API endpoints…','info');
     try{
       var rep=await probeEndpoints();
+      var deep=await deepProbe();
       var html=rep.map(function(e){
         return '<div style="margin:4px 0;padding:4px 0;border-bottom:1px solid #eee"><b>'+esc(e.endpoint)+'</b> — '
           +(e.ok?('items=<b>'+e.itemCount+'</b>'
                  +(e.itemKeys?('<br><span style="color:#0e7490">item fields=['+esc(e.itemKeys.join(', '))+']</span>'):''))
                 :('<span style="color:#b91c1c">error: '+esc(e.error)+'</span>'))+'</div>';
       }).join('');
-      $('dbg-map').innerHTML='<div style="font-size:12px">'+html+'</div>';
-      $('dbg-raw').textContent=JSON.stringify(rep,null,2);
+      // summarize the keyed-read attempts (the decisive part)
+      var dhtml='';
+      if(deep.readByKey){
+        dhtml='<div style="margin-top:10px;font-weight:700;color:#b45309">Keyed-read attempts (looking for rendered rows):</div>';
+        deep.readByKey.forEach(function(r){
+          dhtml+='<div style="margin:3px 0;font-size:11.5px"><code>'+esc(r.path)+'</code> → '
+            +(r.error?('<span style="color:#b91c1c">'+esc(r.error)+'</span>')
+                     :('keys=['+esc((r.summary.keys||[]).join(', '))+']'
+                       +(r.summary.arrays&&Object.keys(r.summary.arrays).length?(' · <b style="color:#047857">arrays: '+esc(Object.keys(r.summary.arrays).map(function(a){return a+'('+r.summary.arrays[a].len+')';}).join(', '))+'</b>'):'')))
+            +'</div>';
+        });
+      }
+      $('dbg-map').innerHTML='<div style="font-size:12px">'+html+dhtml+'</div>';
+      $('dbg-raw').textContent=JSON.stringify({endpoints:rep, deep:deep},null,2);
       var d=document.querySelector('details.dbg'); if(d) d.open=true;
       $('report').style.display='block';
       setConn('ok','Connected');
-      msg('Diagnostics ready. Scroll down to <b>Data inspector</b> and send me what it shows (a screenshot of the itemKeys lines is enough) so I can finish the mapping.','info');
+      msg('Diagnostics ready. Send me the <b>“Keyed-read attempts”</b> lines — if any shows an <b>array</b> of rows, live mode is doable.','info');
     }catch(err){ setConn('err','Error'); msg('Diagnostics failed: '+esc(err.message),'err'); }
   }
   $('acct-diag').addEventListener('click',runDiagnostics);
