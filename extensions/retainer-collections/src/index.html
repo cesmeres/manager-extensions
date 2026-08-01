@@ -767,17 +767,21 @@ if (typeof window.RetainerEngine === 'undefined') {
     });
     return {customerKey:keyOf(it.customer), reference:pick(it,['reference'])||'', date:pick(it,['issuedate','date'])||'', lines:lines};
   }
-  async function fetchInvoicesByKeys(keys, onProgress){
-    var byKey={}, idx=0, POOL=8, done=0;
-    async function worker(){
-      while(idx<keys.length){
-        var k=keys[idx++];
-        try{ byKey[k]=await bridge('/api4/sales-invoice?Key='+encodeURIComponent(k)); }catch(e){ byKey[k]=null; }
-        done++; if(onProgress && done%15===0) onProgress(done, keys.length);
+  // The single-record ?Key= endpoint returns no line items, so scan the batch
+  // (which DOES include lines) and keep only the invoices we need, stopping
+  // early once all are found. Indexes by both envelope key and item key.
+  async function fetchInvoicesFiltered(neededSet, onProgress){
+    var need=Object.keys(neededSet).length, byKey={}, token=null, guard=0, scanned=0, found=0;
+    do{
+      var path='/api4/sales-invoice-batch?PageSize=1000'+(token?('&next_page_token='+encodeURIComponent(token)):'');
+      var body=await bridge(path); var items=itemsOf(body); token=nextToken(body); guard++;
+      for(var i=0;i<items.length;i++){
+        scanned++;
+        var ek=rowKey(items[i]); var it=unwrap(items[i]); var ik=String(pick(it,['key'])||'');
+        if(neededSet[ek]||neededSet[ik]){ var norm=normInvoice(items[i]); if(!byKey[ek]){ byKey[ek]=norm; found++; } if(ik) byKey[ik]=norm; }
       }
-    }
-    var ws=[]; for(var w=0; w<Math.min(POOL,keys.length); w++) ws.push(worker());
-    await Promise.all(ws);
+      if(onProgress) onProgress(scanned, found, need);
+    } while(token && guard<400 && found<need);
     return byKey;
   }
 
@@ -810,10 +814,9 @@ if (typeof window.RetainerEngine === 'undefined') {
       // 2) referenced invoices
       var keySet={}; receipts.forEach(function(r){ r.allocations.forEach(function(a){ if(a.invoice) keySet[a.invoice]=1; }); });
       var keys=Object.keys(keySet);
-      msg('Fetching '+keys.length+' invoices paid in the period…','info');
-      var invRaw=await fetchInvoicesByKeys(keys, function(dn,tot){ setConn('busy','Invoices: '+dn+'/'+tot); });
-      var invoicesByKey={};
-      keys.forEach(function(k){ var b=invRaw[k]; if(b==null) return; var arr=itemsOf(b); var rec=arr.length?arr[0]:b; invoicesByKey[k]=normInvoice(rec); });
+      var neededSet={}; keys.forEach(function(k){ neededSet[k]=1; });
+      msg('Scanning invoices for the '+keys.length+' paid in the period…','info');
+      var invoicesByKey=await fetchInvoicesFiltered(neededSet, function(scanned,found,need){ setConn('busy','Invoices: '+found+'/'+need+' (scanned '+scanned+')'); });
       // 3) customer names
       setConn('busy','Customers…');
       var custName={};
