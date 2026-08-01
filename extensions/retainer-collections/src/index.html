@@ -545,9 +545,10 @@ if (typeof window.RetainerEngine === 'undefined') {
           var accts=[];
           for(var j=0;j<list.length;j++){
             var a=list[j], it=unwrap(a);
-            var key=rowKey(a)||String(pick(it,['key'])||'');
+            var ekey=rowKey(a), ikey=String(pick(it,['key'])||'');
             var name=asText(pick(it,['name']));
-            if(name) accts.push({key:key,name:name});
+            var alt=[]; if(ekey) alt.push(ekey); if(ikey&&ikey!==ekey) alt.push(ikey);
+            if(name) accts.push({key:ekey||ikey, altKeys:alt, name:name});
           }
           if(accts.length){ ACCT_SOURCE=eps[i]; return accts; }
         }
@@ -578,8 +579,8 @@ if (typeof window.RetainerEngine === 'undefined') {
     try{
       var accts=await fetchAccounts();
       accts.sort(function(a,b){ return a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
-      PL_ACCOUNTS=accts.map(function(a){ return {key:a.key,name:a.name,checked:false}; });
-      ACCT_BY_KEY={}; PL_ACCOUNTS.forEach(function(a){ if(a.key) ACCT_BY_KEY[a.key]=a.name; });
+      PL_ACCOUNTS=accts.map(function(a){ return {key:a.key, altKeys:a.altKeys||[a.key], name:a.name, checked:false}; });
+      ACCT_BY_KEY={}; PL_ACCOUNTS.forEach(function(a){ (a.altKeys||[a.key]).forEach(function(k){ if(k) ACCT_BY_KEY[k]=a.name; }); });
       setConn('ok','Connected');
       if(!PL_ACCOUNTS.length){
         box.innerHTML='<div class="pl-empty">No accounts returned by the API — running diagnostics…</div>';
@@ -788,10 +789,11 @@ if (typeof window.RetainerEngine === 'undefined') {
     if(!sel.length){ msg('Pick at least one P&L account first (click “↻ Load”, then tick your retainer account).','warn'); return; }
     var from=toDate($('live-from').value), to=toDate($('live-to').value);
     if(!from||!to){ msg('Set a valid From and To date.','warn'); return; }
-    var selSet={}; sel.forEach(function(a){ selSet[a.key]=1; });
+    var selSet={}; sel.forEach(function(a){ (a.altKeys||[a.key]).forEach(function(k){ if(k) selSet[k]=1; }); });
     var selHas={ has:function(k){ return !!selSet[k]; } };
-    var acctName={}; PL_ACCOUNTS.forEach(function(a){ if(a.key) acctName[a.key]=a.name; });
+    var acctName={}; PL_ACCOUNTS.forEach(function(a){ (a.altKeys||[a.key]).forEach(function(k){ if(k) acctName[k]=a.name; }); });
 
+    $('report').style.display='none';
     setConn('busy','Loading…');
     var t0=Date.now();
     try{
@@ -818,6 +820,12 @@ if (typeof window.RetainerEngine === 'undefined') {
       try{ var custRaw=await fetchAll('customer-batch');
         custRaw.forEach(function(c){ var it=unwrap(c); var nm=pick(it,['namewithcode'])||pick(it,['name']); if(nm) custName[rowKey(c)]=asText(nm); });
       }catch(e){}
+      // account-key overlap check (does the invoice line account match the P&L account key?)
+      var invAcctKeys={}, invWithLines=0;
+      Object.keys(invoicesByKey).forEach(function(k){ var L=invoicesByKey[k].lines||[]; if(L.length) invWithLines++; L.forEach(function(l){ if(l.account) invAcctKeys[l.account]=(invAcctKeys[l.account]||0)+1; }); });
+      var selKeysArr=Object.keys(selSet);
+      var overlap=selKeysArr.filter(function(k){ return invAcctKeys[k]; });
+
       // 4) compute
       var res=CB.compute(receipts, invoicesByKey, {accounts:selHas});
       var ledger=CB.toLedgerRows(res.rows, {account:acctName, customer:custName});
@@ -828,15 +836,25 @@ if (typeof window.RetainerEngine === 'undefined') {
       var unalloc=receipts.reduce(function(s,r){return s+(r.unallocated||0);},0);
       $('dbg-map').innerHTML='<div style="font-size:12px">'
         +'Receipts fetched: <b>'+receiptsRaw.length+'</b> · in period: <b>'+receipts.length+'</b><br>'
-        +'Invoice payments matched: <b>'+res.stats.matchedPayments+'</b> · invoices fetched: <b>'+keys.length+'</b><br>'
-        +'Unresolved invoice refs: <b>'+unresolved+'</b> · receipt lines paid to a customer without a specific invoice: <b>'+unalloc+'</b><br>'
-        +'Direct-to-income receipt lines: <b>'+res.stats.directs+'</b> · elapsed '+secs+'s'
-        +(unalloc?'<br><span style="color:#b45309">Note: '+unalloc+' receipt line(s) were auto-allocated to a customer (no invoice ref) — those can’t be attributed to an account and are excluded. If your total is short, this is likely why.</span>':'')
+        +'Invoices fetched: <b>'+keys.length+'</b> (with lines: '+invWithLines+') · payments matched to selected accounts: <b>'+res.stats.matchedPayments+'</b><br>'
+        +'Selected account keys: <b>'+selKeysArr.length+'</b> · distinct account keys on invoice lines: <b>'+Object.keys(invAcctKeys).length+'</b> · <b style="color:'+(overlap.length?'#047857':'#b91c1c')+'">key overlap: '+overlap.length+'</b><br>'
+        +'Unresolved invoice refs: <b>'+unresolved+'</b> · receipt lines with no specific invoice: <b>'+unalloc+'</b> · direct-to-income lines: <b>'+res.stats.directs+'</b> · elapsed '+secs+'s'
+        +(!overlap.length?'<br><span style="color:#b91c1c">⚠ No overlap between your P&L account keys and the account keys on invoice lines — that’s why the total is 0. The raw box shows both sets so I can fix the mapping.</span>':'')
+        +(unalloc?'<br><span style="color:#b45309">Note: '+unalloc+' receipt line(s) were auto-allocated to a customer with no invoice ref — excluded (can’t attribute to an account).</span>':'')
         +'</div>';
-      $('dbg-raw').textContent=JSON.stringify({stats:res.stats, sampleRows:res.rows.slice(0,5), sampleReceipt:receiptsRaw.length?normReceipt(receiptsRaw[0]):null},null,2);
+      $('dbg-raw').textContent=JSON.stringify({
+        selectedAccountKeys:selKeysArr,
+        topInvoiceLineAccountKeys:Object.keys(invAcctKeys).slice(0,25),
+        stats:res.stats,
+        sampleRows:res.rows.slice(0,5),
+        sampleReceipt:receiptsRaw.length?normReceipt(receiptsRaw[0]):null,
+        sampleInvoice:keys.length?invoicesByKey[keys[0]]:null
+      },null,2);
 
       setConn('ok','Connected');
       afterTransform(report, { periodLabel: rangeLabel(from,to) }, '');
+      if(!res.rows.length){ $('report').style.display='block'; var d=document.querySelector('details.dbg'); if(d) d.open=true;
+        msg('Computed ₱0 across '+keys.length+' invoices — open the <b>Data inspector</b>. If “key overlap” is 0, it’s an account-id mapping issue I can fix; if “no specific invoice” is high, it’s auto-allocated receipts.','warn'); }
     }catch(err){ setConn('err','Error'); msg('Live compute failed: '+esc(err.message)+' — you can always use “Paste / import detail”.','err'); }
   }
 
