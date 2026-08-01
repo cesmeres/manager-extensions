@@ -1,0 +1,20 @@
+{
+  "name": "retainer-collections",
+  "title": "Retainer Collections (Cash Basis)",
+  "version": "1.1.0",
+  "description": "Lists retainer collections by client for a month on a cash basis, reconciled to the P&L. Replaces the export-to-spreadsheet workflow.",
+  "vendor": "Esmeres Outsourcing & Consultancy Inc.",
+  "entry": "src/index.html",
+  "targetPage": "standalone",
+  "permissions": ["read"],
+  "apiEndpoints": ["businesses", "general-ledger-transactions-batch"],
+  "config": {
+    "account": { "type": "string", "default": "Retainer", "description": "Income account name contains" },
+    "currency": { "type": "string", "default": "PHP", "description": "Display currency symbol" }
+  },
+  "minManagerVersion": null,
+  "channels": {
+    "stable": "https://ext.esmeres.com/retainer-collections/stable/",
+    "beta": "https://ext.esmeres.com/retainer-collections/beta/"
+  }
+}

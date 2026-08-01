@@ -1,0 +1,15 @@
+{
+  "vendor": "Esmeres Outsourcing & Consultancy Inc.",
+  "baseUrl": "https://ext.esmeres.com",
+  "updated": "2026-08-01",
+  "extensions": [
+    {
+      "name": "retainer-collections",
+      "title": "Retainer Collections (Cash Basis)",
+      "stable": "1.1.0",
+      "beta": null,
+      "path": "extensions/retainer-collections",
+      "install": "https://ext.esmeres.com/retainer-collections/stable/"
+    }
+  ]
+}

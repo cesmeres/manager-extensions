@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Self-contained. Talks to Manager only through the sandboxed postMessage
+     bridge (no outbound network). Safe to host on GitHub Pages / Netlify. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; frame-ancestors *; form-action 'none'; base-uri 'self';">
+<meta name="referrer" content="no-referrer">
+<title>Retainer Collections — Manager.io</title>
+<style>
+:root{
+  --ink:#0f172a; --ink2:#334155; --muted:#64748b; --dim:#94a3b8;
+  --line:#e2e8f0; --line2:#cbd5e1; --bg:#f8fafc; --card:#ffffff;
+  --brand:#0e7490; --brand2:#0891b2; --brandbg:#ecfeff;
+  --green:#047857; --greenbg:#ecfdf5; --amber:#b45309; --amberbg:#fffbeb;
+  --red:#b91c1c; --redbg:#fef2f2; --radius:10px;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);background:var(--bg);color:var(--ink);font-size:13px;line-height:1.5;padding:18px 20px 60px}
+h1,h2,h3{line-height:1.2}
+a{color:var(--brand)}
+.wrap{max-width:1080px;margin:0 auto}
+
+/* ---- header ---- */
+.rpt-head{text-align:center;padding:6px 0 14px;border-bottom:2px solid var(--ink);margin-bottom:16px}
+.firm{font-size:15px;font-weight:700;letter-spacing:.02em}
+.rpt-title{font-size:20px;font-weight:800;margin-top:2px}
+.rpt-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.rpt-basis{font-size:11px;font-weight:600;color:var(--brand);text-transform:uppercase;letter-spacing:.08em;margin-top:4px}
+
+/* ---- toolbar ---- */
+.toolbar{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin-bottom:14px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tab{padding:6px 14px;border:1px solid var(--line2);border-radius:20px;background:#fff;color:var(--ink2);font-weight:600;font-size:12px;cursor:pointer}
+.tab.active{background:var(--brand);border-color:var(--brand);color:#fff}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.fld{display:flex;flex-direction:column;gap:3px}
+.fld label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.fld input,.fld select{padding:6px 9px;border:1px solid var(--line2);border-radius:6px;font-size:13px;color:var(--ink);background:#fff;outline:none;font-family:var(--sans)}
+.fld input:focus,.fld select:focus{border-color:var(--brand2)}
+.btn{border:none;border-radius:7px;padding:7px 16px;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--brand);color:#fff}
+.btn-primary:hover{background:var(--brand2)}
+.btn-ghost{background:#fff;border:1px solid var(--line2);color:var(--ink2)}
+.btn-ghost:hover{background:var(--bg)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.hint{font-size:11px;color:var(--muted);margin-top:8px}
+.pane{display:none}
+.pane.active{display:block}
+textarea#paste{width:100%;min-height:90px;border:1px dashed var(--line2);border-radius:8px;padding:10px;font-family:var(--mono);font-size:11px;resize:vertical;outline:none}
+textarea#paste:focus{border-color:var(--brand2)}
+.drop{border:1px dashed var(--line2);border-radius:8px;padding:10px;text-align:center;color:var(--muted);font-size:12px;margin-top:8px;cursor:pointer}
+.drop.over{border-color:var(--brand);background:var(--brandbg);color:var(--brand)}
+
+/* connection pill */
+.conn{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;border:1px solid var(--line2);color:var(--muted)}
+.conn .dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+.conn.ok{color:var(--green);border-color:#a7f3d0;background:var(--greenbg)} .conn.ok .dot{background:var(--green)}
+.conn.err{color:var(--red);border-color:#fecaca;background:var(--redbg)} .conn.err .dot{background:var(--red)}
+.conn.busy .dot{background:var(--amber);animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.3}}
+
+/* ---- account picker ---- */
+.acctpick{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;margin-bottom:14px}
+.acctpick-head{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.acctpick-head .tools a{cursor:pointer;font-weight:600;text-transform:none;letter-spacing:0;margin-left:8px}
+#acct-list{display:flex;flex-wrap:wrap;gap:8px}
+.acct-chip{display:flex;align-items:center;gap:7px;border:1px solid var(--line2);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;background:#fff}
+.acct-chip:hover{border-color:var(--brand2)}
+.acct-chip input{margin:0;cursor:pointer}
+.acct-chip .chip-name{font-weight:600}
+.acct-chip .chip-amt{font-family:var(--mono);color:var(--muted);font-size:11px}
+
+/* ---- status / errors ---- */
+.msg{border-radius:8px;padding:10px 13px;font-size:12.5px;margin-bottom:14px}
+.msg.err{background:var(--redbg);border:1px solid #fecaca;color:var(--red)}
+.msg.info{background:var(--brandbg);border:1px solid #a5f3fc;color:var(--brand)}
+.msg.warn{background:var(--amberbg);border:1px solid #fde68a;color:var(--amber)}
+
+/* ---- summary cards ---- */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;border-top:3px solid var(--brand)}
+.card.g{border-top-color:var(--green)} .card.a{border-top-color:var(--amber)} .card.n{border-top-color:var(--ink)}
+.card .lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.card .val{font-size:21px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums}
+.card .sub{font-size:11px;color:var(--muted);margin-top:1px}
+
+/* reconciliation strip */
+.recon{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin-bottom:16px}
+.recon h3{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px}
+.recon table{width:100%;font-size:12.5px;border-collapse:collapse}
+.recon td{padding:3px 0}
+.recon td:last-child{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono)}
+.recon tr.tot td{border-top:1px solid var(--line);font-weight:800;padding-top:6px}
+.recon .ok{color:var(--green);font-weight:700}
+.recon .bad{color:var(--red);font-weight:700}
+
+/* ---- section + tables ---- */
+.section{margin-bottom:22px}
+.section h2{font-size:15px;font-weight:800;padding-bottom:6px;border-bottom:2px solid var(--line2);margin-bottom:8px;display:flex;justify-content:space-between;align-items:baseline}
+.section h2 .badge{font-size:11px;font-weight:700;color:var(--muted)}
+table.grid{width:100%;border-collapse:collapse;font-size:12.5px}
+table.grid th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line2);background:var(--bg)}
+table.grid th.num,table.grid td.num{text-align:right;font-variant-numeric:tabular-nums}
+table.grid td{padding:7px 10px;border-bottom:1px solid var(--line)}
+table.grid tr.acct-row td{background:var(--brand);color:#fff;font-weight:800;font-size:13px;letter-spacing:.02em}
+table.grid tr.acct-sub td{background:#e0f7fb;font-weight:800;color:var(--brand);border-top:1px solid var(--brand2);border-bottom:2px solid var(--brand2)}
+table.grid tr.client-row td{background:var(--brandbg);font-weight:700;color:var(--brand)}
+table.grid tr.sub td{background:#fbfdff;font-weight:700;color:var(--ink2);border-bottom:1px solid var(--line2)}
+table.grid tr.grand td{font-weight:800;font-size:13.5px;border-top:2px solid var(--ink);background:#fff}
+table.grid td.mono{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.amt{font-family:var(--mono)}
+.empty{color:var(--muted);font-style:italic;padding:14px 10px}
+
+/* debug */
+details.dbg{margin-top:18px;font-size:12px}
+details.dbg summary{cursor:pointer;color:var(--muted);font-weight:600}
+pre.raw{background:#0b1220;color:#cbd5e1;padding:12px;border-radius:8px;overflow:auto;font-size:11px;max-height:280px;margin-top:8px}
+.foot{margin-top:24px;text-align:center;font-size:11px;color:var(--dim)}
+
+@media print{
+  body{background:#fff;padding:0;font-size:11px}
+  .toolbar,.drop,.acctpick,details.dbg,.foot,.noprint{display:none!important}
+  .card,.recon,.section{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="rpt-head">
+    <div class="firm" id="firm">ESMERES OUTSOURCING &amp; CONSULTANCY INC.</div>
+    <div class="rpt-title">Retainer Collections</div>
+    <div class="rpt-sub" id="period-sub">Choose a date range and load data</div>
+    <div class="rpt-basis">Cash Basis</div>
+  </div>
+
+  <!-- ================= TOOLBAR ================= -->
+  <div class="toolbar noprint">
+    <div class="tabs">
+      <div class="tab active" data-tab="live">Load from Manager</div>
+      <div class="tab" data-tab="import">Paste / import detail</div>
+      <span style="margin-left:auto"><span class="conn" id="conn"><span class="dot"></span><span id="conn-txt">Not connected</span></span></span>
+    </div>
+
+    <!-- LIVE -->
+    <div class="pane active" id="pane-live">
+      <div class="row">
+        <div class="fld"><label>From date</label><input id="live-from" type="date"></div>
+        <div class="fld"><label>To date</label><input id="live-to" type="date"></div>
+        <div class="fld"><label>Accounts to include (name contains)</label><input id="live-account" type="text" value="Retainer" style="width:180px"></div>
+        <div class="fld"><label>Description contains (optional)</label><input id="live-desc" type="text" value="" style="width:150px" placeholder="e.g. Retainer"></div>
+        <button class="btn btn-primary" id="btn-load">Load report</button>
+      </div>
+      <div class="hint">Pulls the cash-basis General&nbsp;Ledger for the date range, keeps accounts whose name contains the text above, then nets each invoice (Credit&nbsp;&minus;&nbsp;Debit) per account. Multiple accounts get their own subtotal plus a grand total. On first run, confirm the total matches your P&amp;L (Data inspector shows the detected fields).</div>
+    </div>
+
+    <!-- IMPORT -->
+    <div class="pane" id="pane-import">
+      <div class="row" style="margin-bottom:8px">
+        <div class="fld"><label>From date (optional)</label><input id="imp-from" type="date"></div>
+        <div class="fld"><label>To date (optional)</label><input id="imp-to" type="date"></div>
+        <div class="fld"><label>Period label (if no dates)</label><input id="imp-period" type="text" placeholder="e.g. Jan–Mar 2026" style="width:150px"></div>
+        <div class="fld"><label>Description contains (optional)</label><input id="imp-desc" type="text" value="" style="width:140px" placeholder="e.g. Retainer"></div>
+        <button class="btn btn-primary" id="btn-build">Build report</button>
+      </div>
+      <textarea id="paste" placeholder="Paste the cash-basis ledger here (copy the on-screen table from Manager, or a selection from Excel). Header row first: Date, Transaction, Customer, Description, Debit, Credit — plus an Account column if you want per-account subtotals."></textarea>
+      <div class="drop" id="drop">…or drop / choose a <b>.csv</b> export of the same detail &nbsp;<input type="file" id="file" accept=".csv,text/csv" style="display:none"></div>
+      <div class="hint">Reproduces the exact reconciled report offline — no export to ChatGPT. Include an <b>Account</b> column to get per-account subtotals + grand total. Header names matched loosely; tab- or comma-separated both work.</div>
+    </div>
+  </div>
+
+  <div id="messages"></div>
+
+  <!-- account picker (shown when >1 account is present) -->
+  <div class="acctpick noprint" id="acct-picker" style="display:none">
+    <div class="acctpick-head">
+      <span>Accounts in report — tick to include</span>
+      <span class="tools"><a id="acct-all">Select all</a><a id="acct-none">None</a></span>
+    </div>
+    <div id="acct-list"></div>
+  </div>
+
+  <!-- ================= REPORT ================= -->
+  <div id="report" style="display:none">
+    <div class="cards">
+      <div class="card g"><div class="lbl">Gross collections</div><div class="val" id="c-gross">—</div><div class="sub" id="c-gross-sub"></div></div>
+      <div class="card a"><div class="lbl">Adjustments / reversals</div><div class="val" id="c-adj">—</div><div class="sub" id="c-adj-sub"></div></div>
+      <div class="card n"><div class="lbl">Net cash-basis retainer income</div><div class="val" id="c-net">—</div><div class="sub">= what hits the P&amp;L</div></div>
+      <div class="card"><div class="lbl">Clients</div><div class="val" id="c-clients">—</div><div class="sub" id="c-clients-sub"></div></div>
+    </div>
+
+    <div class="recon">
+      <h3>Reconciliation to the ledger</h3>
+      <table>
+        <tr><td>Total credits in source</td><td id="r-credit">—</td></tr>
+        <tr><td>Less: total debits in source</td><td id="r-debit">—</td></tr>
+        <tr class="tot"><td>Net cash-basis amount</td><td id="r-net">—</td></tr>
+        <tr><td>Gross collections + adjustments</td><td id="r-check">—</td></tr>
+        <tr><td>Ties out?</td><td id="r-tie">—</td></tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>Paid Retainers <span class="badge" id="paid-badge"></span></h2>
+      <div id="paid-container"></div>
+    </div>
+
+    <div class="section" id="sec-adj">
+      <h2>Adjustments &amp; Reversals <span class="badge" id="adj-badge"></span></h2>
+      <div id="adj-container"></div>
+    </div>
+
+    <div class="noprint" style="display:flex;gap:8px;margin:8px 0 4px">
+      <button class="btn btn-ghost" id="btn-csv">⬇ Export CSV</button>
+      <button class="btn btn-ghost" id="btn-print">🖨 Print / Save PDF</button>
+    </div>
+
+    <details class="dbg noprint"><summary>Data inspector (field mapping &amp; raw sample)</summary>
+      <div id="dbg-map"></div>
+      <pre class="raw" id="dbg-raw"></pre>
+    </details>
+  </div>
+
+  <div class="foot">Retainer Collections · cash-basis · generated <span id="gen-ts"></span></div>
+</div>
+
+<script src="engine.js"></script>
+<script>
+if (typeof window.RetainerEngine === 'undefined') {
+  document.getElementById('messages').innerHTML =
+    '<div class="msg err">Could not load <b>engine.js</b>. Host it alongside index.html (same folder).</div>';
+}
+</script>
+<script>
+(function(){
+  'use strict';
+  var E = window.RetainerEngine;
+  var CUR = '₱';
+  var STATE = { report:null, meta:null };
+
+  function $(id){ return document.getElementById(id); }
+  function fmt(n){ var neg=n<0; n=Math.abs(n); return (neg?'-':'')+CUR+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function msg(html,cls){ $('messages').innerHTML = html ? '<div class="msg '+(cls||'info')+'">'+html+'</div>' : ''; }
+  function iso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function toDate(v){ if(!v&&v!==0) return null; var s=String(v).trim(); if(!s) return null;
+    var m=/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(s); if(m){var y=+m[3]; if(y<100)y+=2000; return new Date(y,+m[1]-1,+m[2]);}
+    m=/^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s); if(m) return new Date(+m[1],+m[2]-1,+m[3]);
+    var d=new Date(s); return isNaN(d)?null:d; }
+  function rangeLabel(from,to){
+    var o={month:'short',day:'numeric',year:'numeric'};
+    if(from&&to) return from.toLocaleDateString('en-US',o)+' – '+to.toLocaleDateString('en-US',o);
+    if(from) return 'from '+from.toLocaleDateString('en-US',o);
+    if(to) return 'through '+to.toLocaleDateString('en-US',o);
+    return '';
+  }
+
+  /* default range = previous full month */
+  (function(){
+    var d=new Date(); var last=new Date(d.getFullYear(),d.getMonth(),0); var first=new Date(last.getFullYear(),last.getMonth(),1);
+    $('live-from').value=iso(first); $('live-to').value=iso(last);
+    $('gen-ts').textContent=new Date().toLocaleString();
+  })();
+
+  /* tabs */
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(t){
+    t.addEventListener('click',function(){
+      document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});
+      t.classList.add('active');
+      $('pane-live').classList.toggle('active', t.dataset.tab==='live');
+      $('pane-import').classList.toggle('active', t.dataset.tab==='import');
+    });
+  });
+
+  /* ======================= ACCOUNT PICKER ======================= */
+  function buildAcctPicker(accounts, autoTick){
+    var pick=$('acct-picker'), list=$('acct-list');
+    if(accounts.length<=1){ pick.style.display='none'; list.innerHTML=''; return; }
+    pick.style.display='';
+    var tick=(autoTick||'').toLowerCase().trim();
+    var anyMatch = tick && accounts.some(function(a){return (a.account||'').toLowerCase().indexOf(tick)>-1;});
+    list.innerHTML = accounts.map(function(a,i){
+      var on = !tick || !anyMatch || (a.account||'').toLowerCase().indexOf(tick)>-1;
+      return '<label class="acct-chip"><input type="checkbox" value="'+i+'"'+(on?' checked':'')+'>'
+        +'<span class="chip-name">'+esc(a.account||'(unnamed account)')+'</span>'
+        +'<span class="chip-amt">'+fmt(a.summary.net)+'</span></label>';
+    }).join('');
+    list.querySelectorAll('input').forEach(function(cb){ cb.addEventListener('change',renderSelected); });
+  }
+  function selectedAccounts(){
+    if(!STATE.report) return [];
+    if($('acct-picker').style.display==='none') return STATE.report.accounts.slice();
+    var idx=[]; $('acct-list').querySelectorAll('input:checked').forEach(function(cb){ idx.push(+cb.value); });
+    return idx.map(function(i){ return STATE.report.accounts[i]; });
+  }
+  $('acct-all').addEventListener('click',function(){ $('acct-list').querySelectorAll('input').forEach(function(c){c.checked=true;}); renderSelected(); });
+  $('acct-none').addEventListener('click',function(){ $('acct-list').querySelectorAll('input').forEach(function(c){c.checked=false;}); renderSelected(); });
+
+  /* ======================= RENDER ======================= */
+  function afterTransform(report, meta, autoTick){
+    STATE.report=report; STATE.meta=meta;
+    buildAcctPicker(report.accounts, autoTick);
+    $('report').style.display='block';
+    renderSelected();
+  }
+
+  function renderSelected(){
+    if(!STATE.report) return;
+    var accts=selectedAccounts();
+    var showAcct = accts.length>1;
+    var grand=E.grandSummary(accts);
+    var meta=STATE.meta;
+
+    $('period-sub').textContent = meta.periodLabel || '';
+    $('c-gross').textContent=fmt(grand.grossPositive); $('c-gross-sub').textContent=grand.invoicesWithCollections+' invoices';
+    $('c-adj').textContent=fmt(grand.adjustments); $('c-adj-sub').textContent=countAdj(accts)+' item(s)';
+    $('c-net').textContent=fmt(grand.net);
+    $('c-clients').textContent=String(grand.clientsWithCollections);
+    $('c-clients-sub').textContent='across '+accts.length+' account'+(accts.length===1?'':'s');
+
+    $('r-credit').textContent=fmt(grand.totalCredit);
+    $('r-debit').textContent='('+fmt(grand.totalDebit)+')';
+    $('r-net').textContent=fmt(grand.net);
+    $('r-check').textContent=fmt(E.round2(grand.grossPositive+grand.adjustments));
+    var ledgerNet=E.round2(grand.totalCredit-grand.totalDebit);
+    var ties = Math.abs(ledgerNet-grand.net)<0.005 && Math.abs((grand.grossPositive+grand.adjustments)-grand.net)<0.005;
+    $('r-tie').innerHTML = ties?'<span class="ok">Yes — balanced</span>':'<span class="bad">No — review source</span>';
+
+    $('paid-container').innerHTML = renderPaid(accts, grand, showAcct);
+    $('paid-badge').textContent = grand.invoicesWithCollections+' invoices · '+grand.clientsWithCollections+' clients'+(showAcct?(' · '+accts.length+' accounts'):'');
+
+    var adj=renderAdj(accts, grand, showAcct);
+    $('adj-container').innerHTML=adj.html;
+    $('adj-badge').textContent=adj.count+' item(s)';
+
+    $('gen-ts').textContent=new Date().toLocaleString();
+    STATE.selected=accts; STATE.grand=grand;
+    if(!accts.length) msg('No accounts selected — tick at least one account above.','warn');
+    else if(!ties) msg('The selected accounts don’t tie to the ledger net — check the source data / field mapping in the Data inspector.','warn');
+    else msg('');
+  }
+
+  function countAdj(accts){ var n=0; accts.forEach(function(a){n+=a.adjustments.length;}); return n; }
+
+  function renderPaid(accts, grand, showAcct){
+    if(!accts.length) return '<table class="grid"><tbody><tr><td class="empty">No accounts selected.</td></tr></tbody></table>';
+    var rows='';
+    accts.forEach(function(a){
+      if(showAcct) rows+='<tr class="acct-row"><td colspan="4">'+esc(a.account||'(unnamed account)')+'</td></tr>';
+      var curClient=null, sub=0, subCount=0;
+      function flush(){ if(curClient!==null) rows+='<tr class="sub"><td colspan="3">Subtotal — '+esc(curClient)+' ('+subCount+')</td><td class="num amt">'+fmt(sub)+'</td></tr>'; }
+      a.paid.forEach(function(p){
+        if(p.customer!==curClient){ flush(); curClient=p.customer; sub=0; subCount=0;
+          rows+='<tr class="client-row"><td colspan="4">'+esc(p.customer)+'</td></tr>'; }
+        sub=E.round2(sub+p.amount); subCount++;
+        rows+='<tr><td></td><td>'+esc(p.invoice||'')+'</td><td class="mono">'+esc(p.invoiceDate||'')+'</td><td class="num amt">'+fmt(p.amount)+'</td></tr>';
+      });
+      flush();
+      if(showAcct) rows+='<tr class="acct-sub"><td colspan="3">Subtotal — '+esc(a.account||'(unnamed account)')+' · '+a.summary.invoicesWithCollections+' invoices · '+a.summary.clientsWithCollections+' clients</td><td class="num amt">'+fmt(a.summary.grossPositive)+'</td></tr>';
+    });
+    rows+='<tr class="grand"><td colspan="3">'+(showAcct?'GRAND TOTAL — GROSS COLLECTIONS':'GROSS COLLECTIONS')+'</td><td class="num amt">'+fmt(grand.grossPositive)+'</td></tr>';
+    return '<table class="grid"><thead><tr><th>Client / Invoice</th><th>Invoice #</th><th>Invoice date</th><th class="num">Amount</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  }
+
+  function renderAdj(accts, grand, showAcct){
+    var all=[]; accts.forEach(function(a){ all=all.concat(a.adjustments); });
+    if(!all.length) return { html:'<table class="grid"><tbody><tr><td colspan="4" class="empty">None.</td></tr></tbody></table>', count:0 };
+    var cols = showAcct ? ['Account','Client','Invoice #','Invoice date','Amount'] : ['Client','Invoice #','Invoice date','Amount'];
+    var head='<tr>'+cols.map(function(c,i){return '<th'+(i===cols.length-1?' class="num"':'')+'>'+c+'</th>';}).join('')+'</tr>';
+    var body='';
+    all.forEach(function(x){
+      body+='<tr>'+(showAcct?'<td>'+esc(x.account||'')+'</td>':'')
+        +'<td>'+esc(x.customer)+'</td><td>'+esc(x.invoice||'')+'</td><td class="mono">'+esc(x.invoiceDate||'')+'</td>'
+        +'<td class="num amt">'+fmt(x.amount)+'</td></tr>';
+    });
+    body+='<tr class="grand"><td colspan="'+(cols.length-1)+'">TOTAL ADJUSTMENTS</td><td class="num amt">'+fmt(grand.adjustments)+'</td></tr>';
+    return { html:'<table class="grid"><thead>'+head+'</thead><tbody>'+body+'</tbody></table>', count:all.length };
+  }
+
+  /* ======================= IMPORT (paste / CSV) ======================= */
+  function parseDelimited(text){
+    text = text.replace(/\r\n?/g,'\n').replace(/\n+$/,'');
+    if(!text.trim()) return [];
+    var delim = text.indexOf('\t')>-1 ? '\t' : ',';
+    var rows=[], row=[], f='', i=0, q=false;
+    while(i<text.length){
+      var c=text[i];
+      if(q){ if(c==='"'){ if(text[i+1]==='"'){f+='"';i+=2;continue;} q=false;i++;continue;} f+=c;i++;continue; }
+      if(c==='"'){q=true;i++;continue;}
+      if(c===delim){row.push(f);f='';i++;continue;}
+      if(c==='\n'){row.push(f);rows.push(row);row=[];f='';i++;continue;}
+      f+=c;i++;
+    }
+    row.push(f); rows.push(row);
+    return rows;
+  }
+  function findCol(header, names){
+    for(var i=0;i<header.length;i++){ var h=String(header[i]).toLowerCase().trim();
+      for(var j=0;j<names.length;j++) if(h.indexOf(names[j])>-1) return i; }
+    return -1;
+  }
+  function buildFromText(text){
+    var table = parseDelimited(text);
+    if(table.length<2) throw new Error('Could not read a header row plus at least one data row.');
+    var header = table[0];
+    var map = {
+      date: findCol(header,['date']),
+      transaction: findCol(header,['transaction','reference','invoice','source']),
+      customer: findCol(header,['customer','contact','client','name']),
+      description: findCol(header,['description','item']),
+      account: findCol(header,['account']),
+      debit: findCol(header,['debit']),
+      credit: findCol(header,['credit'])
+    };
+    if(map.transaction<0 || map.debit<0 || map.credit<0)
+      throw new Error('Missing required columns. Need Transaction, Debit and Credit (found: '+header.join(', ')+').');
+    var from=toDate($('imp-from').value), to=toDate($('imp-to').value);
+    var rows = table.slice(1).filter(function(r){return r.length>1;}).map(function(r){
+      return {
+        date: map.date>-1? r[map.date] : '',
+        transaction: r[map.transaction],
+        customer: map.customer>-1? r[map.customer] : '',
+        description: map.description>-1? r[map.description] : '',
+        account: map.account>-1? r[map.account] : '',
+        debit: r[map.debit], credit: r[map.credit]
+      };
+    });
+    rows = filterByDate(rows, from, to);
+    var desc = $('imp-desc').value.trim();
+    var report = E.transform(rows, desc? {descriptionFilter:desc} : {});
+    showDebugImport(map, rows.slice(0,3), header);
+    var label = ($('imp-period').value.trim()) || rangeLabel(from,to) || 'Imported detail';
+    afterTransform(report, { periodLabel: label }, '');
+  }
+  function filterByDate(rows, from, to){
+    if(!from && !to) return rows;
+    return rows.filter(function(r){
+      var d=toDate(r.date); if(!d) return true;   // keep undated boundary rows
+      if(from && d<from) return false;
+      if(to && d>to) return false;
+      return true;
+    });
+  }
+
+  $('btn-build').addEventListener('click',function(){ try{ msg(''); buildFromText($('paste').value); } catch(err){ msg(esc(err.message),'err'); } });
+  var drop=$('drop'), file=$('file');
+  drop.addEventListener('click',function(){file.click();});
+  drop.addEventListener('dragover',function(e){e.preventDefault();drop.classList.add('over');});
+  drop.addEventListener('dragleave',function(){drop.classList.remove('over');});
+  drop.addEventListener('drop',function(e){e.preventDefault();drop.classList.remove('over'); var f=e.dataTransfer.files[0]; if(f) readFile(f);});
+  file.addEventListener('change',function(){ if(file.files[0]) readFile(file.files[0]); });
+  function readFile(f){ var r=new FileReader(); r.onload=function(){ try{ msg(''); buildFromText(r.result); }catch(err){ msg(esc(err.message),'err'); } }; r.readAsText(f); }
+
+  function showDebugImport(map, sample, header){
+    var rows = Object.keys(map).map(function(k){ var i=map[k];
+      return '<tr><td style="padding:2px 10px 2px 0;color:#64748b">'+k+'</td><td>'+(i>-1?('column '+(i+1)+' — <b>'+esc(header?header[i]:'')+'</b>'):'<i>not found</i>')+'</td></tr>'; }).join('');
+    $('dbg-map').innerHTML='<table style="font-size:12px;margin:6px 0 10px">'+rows+'</table>';
+    $('dbg-raw').textContent=JSON.stringify(sample,null,2);
+  }
+
+  /* ======================= LIVE (Manager bridge) ======================= */
+  var MANAGER_ORIGIN=null;
+  function bridge(path){
+    return new Promise(function(resolve,reject){
+      var rid=(crypto.randomUUID?crypto.randomUUID():String(Math.random()));
+      var timer=setTimeout(function(){ window.removeEventListener('message',h); reject(new Error('Timed out — is this running inside Manager.io?')); },20000);
+      function h(e){
+        if(MANAGER_ORIGIN && e.origin!==MANAGER_ORIGIN) return;
+        if(e.source!==window.parent) return;
+        if(e.data && typeof e.data.type==='string' && e.data.type.slice(-9)==='-response' && e.data.requestId===rid){
+          clearTimeout(timer); window.removeEventListener('message',h);
+          if(!MANAGER_ORIGIN && e.origin) MANAGER_ORIGIN=e.origin;
+          resolve(e.data.body);
+        }
+      }
+      window.addEventListener('message',h);
+      window.parent.postMessage({type:'api-request',method:'GET',path:path,requestId:rid},'*');
+    });
+  }
+  function itemsOf(d){ if(Array.isArray(d)) return d; if(d&&typeof d==='object'){ if(Array.isArray(d.items))return d.items; if(Array.isArray(d.data))return d.data; for(var k in d) if(Array.isArray(d[k])) return d[k]; } return []; }
+  function nextToken(d){ return d && (d.next_page_token||d.nextPageToken) || null; }
+  async function fetchAll(endpoint){
+    var out=[], token=null, guard=0;
+    do{ var path='/api4/'+endpoint+'?PageSize=100000'+(token?('&next_page_token='+encodeURIComponent(token)):'');
+      var body=await bridge(path); out=out.concat(itemsOf(body)); token=nextToken(body); guard++;
+    } while(token && guard<500);
+    return out;
+  }
+  function setConn(state,txt){ var c=$('conn'); c.className='conn '+(state||''); $('conn-txt').textContent=txt; }
+  function pick(obj,names){
+    for(var i=0;i<names.length;i++){ for(var k in obj){ if(k.toLowerCase()===names[i]) return obj[k]; } }
+    for(var j=0;j<names.length;j++){ for(var k2 in obj){ if(k2.toLowerCase().indexOf(names[j])>-1) return obj[k2]; } }
+    return undefined;
+  }
+  function asText(v){
+    if(v==null) return '';
+    if(typeof v==='object'){
+      var ref=v.Reference||v.reference||v.Number||v.number||v.Code||v.code;
+      var name=v.Name||v.name||v.Description||v.description;
+      var type=v.Type||v.type||'';
+      if(ref) return (String(type).replace(/([a-z])([A-Z])/g,'$1 $2')||'Sales Invoice')+' — '+ref+' — '+(v.Date||v.date||'');
+      if(name) return name;
+      return JSON.stringify(v);
+    }
+    return String(v);
+  }
+
+  async function loadLive(){
+    if(window.self===window.top){
+      msg('Live mode only works when this page is opened inside Manager.io (Settings → Extensions). Use the “Paste / import detail” tab here in the browser.','warn');
+      setConn('err','Not in Manager'); return;
+    }
+    setConn('busy','Loading…'); msg('Contacting Manager.io…','info');
+    try{
+      try{ var biz=itemsOf(await bridge('/api4/businesses?PageSize=50'));
+        if(biz.length){ var nm=pick(biz[0],['name']); if(nm) $('firm').textContent=String(nm).toUpperCase(); } }catch(e){}
+
+      var from=toDate($('live-from').value), to=toDate($('live-to').value);
+      var acctFilter=$('live-account').value.trim().toLowerCase();
+      var descFilter=$('live-desc').value.trim();
+
+      var gl=await fetchAll('general-ledger-transactions-batch');
+      if(!gl.length) throw new Error('The General Ledger returned no rows. Confirm the endpoint name with the Developer Toolkit.');
+
+      var rows=[], sample=[];
+      for(var i=0;i<gl.length;i++){
+        var g=gl[i];
+        var dRaw=pick(g,['date','transactiondate','postingdate']);
+        var d=dRaw?toDate(dRaw):null;
+        if(d){ if(from&&d<from) continue; if(to&&d>to) continue; }
+        var acct=asText(pick(g,['account']));
+        if(acctFilter && acct.toLowerCase().indexOf(acctFilter)===-1) continue;
+        rows.push({
+          date:dRaw||'',
+          account:acct,
+          transaction:asText(pick(g,['transaction','reference','sourcedocument','document','invoice'])),
+          customer:asText(pick(g,['customer','contact','client'])),
+          description:asText(pick(g,['description','narration','item'])),
+          debit:pick(g,['debit']), credit:pick(g,['credit'])
+        });
+        if(sample.length<3) sample.push(g);
+      }
+      showDebugLive(gl, rows, sample);
+      if(!rows.length) throw new Error('No GL rows matched account containing "'+acctFilter+'" in '+rangeLabel(from,to)+'. Adjust the account text or date range, or check the mapping in the Data inspector.');
+
+      var report=E.transform(rows, descFilter?{descriptionFilter:descFilter}:{});
+      setConn('ok','Connected');
+      afterTransform(report, { periodLabel: rangeLabel(from,to) }, acctFilter);
+    }catch(err){
+      setConn('err','Error');
+      msg(esc(err.message)+' <br><span style="color:#64748b">If live mode can’t reach the cash-basis ledger on your build, use “Paste / import detail” — same report, fully reconciled.</span>','err');
+    }
+  }
+  function showDebugLive(gl, rows, sample){
+    var keys=gl.length?Object.keys(gl[0]):[];
+    $('dbg-map').innerHTML='<div style="font-size:12px;margin:6px 0">Fetched <b>'+gl.length+'</b> GL rows · matched <b>'+rows.length+'</b> after date + account filter.<br>Detected keys on a GL record: <code style="font-size:11px">'+esc(keys.join(', '))+'</code></div>';
+    $('dbg-raw').textContent=JSON.stringify(sample,null,2);
+  }
+  $('btn-load').addEventListener('click',loadLive);
+
+  (function probe(){
+    if(window.self===window.top){ setConn('err','Standalone (import only)'); return; }
+    setConn('busy','Checking…');
+    bridge('/api4/businesses?PageSize=1').then(function(){ setConn('ok','Connected'); }).catch(function(){ setConn('err','No response'); });
+  })();
+
+  /* ======================= EXPORT ======================= */
+  $('btn-print').addEventListener('click',function(){ window.print(); });
+  $('btn-csv').addEventListener('click',function(){
+    var accts=STATE.selected, grand=STATE.grand, m=STATE.meta; if(!accts||!accts.length) return;
+    var showAcct=accts.length>1;
+    function q(v){ v=String(v==null?'':v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
+    var L=[];
+    L.push([ 'Retainer Collections — '+(m.periodLabel||'') ].map(q).join(','));
+    L.push([ $('firm').textContent,'Cash basis' ].map(q).join(','));
+    L.push('');
+    L.push([ 'Account','Name of client','Invoice #','Invoice date','Amount' ].map(q).join(','));
+    accts.forEach(function(a){
+      a.paid.forEach(function(p){ L.push([ a.account,p.customer,p.invoice,p.invoiceDate,p.amount ].map(q).join(',')); });
+      if(showAcct) L.push([ 'Subtotal — '+a.account,'','','',a.summary.grossPositive ].map(q).join(','));
+    });
+    L.push([ 'GRAND TOTAL — GROSS COLLECTIONS','','','',grand.grossPositive ].map(q).join(','));
+    var anyAdj=accts.some(function(a){return a.adjustments.length;});
+    if(anyAdj){
+      L.push(''); L.push([ 'ADJUSTMENTS / REVERSALS' ].map(q).join(','));
+      L.push([ 'Account','Name of client','Invoice #','Invoice date','Amount' ].map(q).join(','));
+      accts.forEach(function(a){ a.adjustments.forEach(function(x){ L.push([ a.account,x.customer,x.invoice,x.invoiceDate,x.amount ].map(q).join(',')); }); });
+      L.push([ 'Total adjustments','','','',grand.adjustments ].map(q).join(','));
+    }
+    L.push(''); L.push([ 'Net cash-basis retainer income','','','',grand.net ].map(q).join(','));
+    var blob=new Blob(['﻿'+L.join('\n')],{type:'text/csv;charset=utf-8'});
+    var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download='retainer_collections_'+(m.periodLabel||'report').replace(/[^a-z0-9]+/gi,'_').toLowerCase().replace(/^_|_$/g,'')+'.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  });
+
+})();
+</script>
+</body>
+</html>
